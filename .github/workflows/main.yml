@@ -10,80 +10,60 @@ jobs:
 
     steps:
       - name: Print Windows version
+        shell: powershell
         run: |
           systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
 
       - name: Configure Core RDP Settings
+        shell: powershell
         run: |
-          # Enable Remote Desktop and disable NLA for easier connection
+          # Enable Remote Desktop & (opsional) matikan NLA (UserAuthentication=0)
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-            -Name "fDenyTSConnections" -Value 0 -Force
+                           -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "UserAuthentication" -Value 0 -Force
+                           -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "SecurityLayer" -Value 0 -Force
-          
-          # Open firewall for RDP (TCP/3389)
-          netsh advfirewall firewall add rule name="Allow RDP" dir=in action=allow protocol=TCP localport=3389
+                           -Name "SecurityLayer" -Value 0 -Force
 
-          # Restart the Remote Desktop service to apply changes
+          # Firewall RDP
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 | Out-Null
+
+          # Restart RDP service
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with specific password
+        shell: powershell
         run: |
-          # WARNING: Hardcoding passwords in workflows is insecure.
+          # ⚠️ Hardcode password itu riskan; idealnya pakai secret.
           $plain = "Evan123456"
           $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
-          
-          # Create or update local user
+
           $existing = Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
           if ($null -eq $existing) {
             New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires | Out-Null
           } else {
             Set-LocalUser -Name "Yanzz" -Password $securePass
           }
-          
-          # Add user to Administrators and Remote Desktop Users groups
           Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
 
-      - name: ✨ Install Mesa3D (Software GPU) for Basic Gaming
-        run: |
-          Write-Host "Downloading and installing Mesa3D for software-based graphics rendering..."
-          $mesaUrl = "https://github.com/pal1000/mesa-dist-win/releases/download/24.1.1/mesa3d-24.1.1-release-msvc.7z"
-          $mesaPath = "$env:TEMP\mesa3d.7z"
-          
-          # Install 7-Zip to extract the archive
-          winget install -e --id 7zip.7zip --accept-source-agreements --accept-package-agreements
-          
-          # Download Mesa3D
-          Invoke-WebRequest -Uri $mesaUrl -OutFile $mesaPath
-          
-          # Extract the files
-          & "C:\Program Files\7-Zip\7z.exe" x $mesaPath -o"$env:TEMP\mesa3d" -y
-          
-          # Copy the necessary DLLs to System32 to enable system-wide OpenGL support
-          Copy-Item -Path "$env:TEMP\mesa3d\x64\opengl32.dll" -Destination "C:\Windows\System32\"
-          Copy-Item -Path "$env:TEMP\mesa3d\x64\libgallium_wgl.dll" -Destination "C:\Windows\System32\"
-          Copy-Item -Path "$env:TEMP\mesa3d\x64\libglapi.dll" -Destination "C:\Windows\System32\"
-          Write-Host "Mesa3D drivers installed successfully."
-
-      - name: ✨ Install Additional Software (WinRAR, Roblox)
-        run: |
-          Write-Host "Installing WinRAR and Roblox using winget..."
-          winget install -e --id WinRAR.WinRAR --accept-source-agreements --accept-package-agreements
-          winget install -e --id Roblox.Roblox --accept-source-agreements --accept-package-agreements
-          Write-Host "Software installation complete."
+          if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
+            Write-Error "User creation failed"
+            exit 1
+          }
 
       - name: Install Tailscale
+        shell: powershell
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.72.0-amd64.msi"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
       - name: Establish Tailscale Connection
+        shell: powershell
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
@@ -91,43 +71,107 @@ jobs:
             Write-Error "secrets.TAILSCALE_AUTH_KEY is not set."
             exit 1
           }
-          
-          # Bring up Tailscale
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="gh-runner-$env:GITHUB_RUN_ID"
-          
-          # Wait for Tailscale to assign an IPv4 address
+
+          # Ambil IPv4 Tailscale
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 12) {
             $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
             if (-not $tsIP) { Start-Sleep -Seconds 5; $retries++ }
           }
-          
-          if (-not $tsIP) {
-            Write-Error "Tailscale IP not assigned. Exiting."
-            exit 1
-          }
+          if (-not $tsIP) { Write-Error "Tailscale IP not assigned. Exiting."; exit 1 }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
       - name: Verify RDP Accessibility (TCP 3389)
+        shell: powershell
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-            Write-Error "TCP connection to RDP port 3389 failed"
-            exit 1
-          }
+          $ok = (Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389).TcpTestSucceeded
+          if (-not $ok) { Write-Error "TCP 3389 test failed"; exit 1 }
           Write-Host "TCP connectivity successful!"
 
+      # === SOFTWARE SECTION (WinRAR, Roblox, deps) ===
+      - name: Install dependencies (VC++ runtime, WebView2)
+        shell: powershell
+        run: |
+          # Runner biasanya punya Chocolatey; kalau ada, pakai untuk VC++ 2015-2022
+          try {
+            choco --version
+            choco install vcredist140 -y --no-progress
+          } catch { Write-Host "Chocolatey not available or failed, skipping VC++ via choco." }
+          # WebView2 (beberapa app modern pakai ini)
+          try {
+            winget --version
+            winget install -e --id Microsoft.EdgeWebView2Runtime --silent --accept-package-agreements --accept-source-agreements
+          } catch { Write-Host "winget not available or WebView2 install failed (ok to skip)." }
+
+      - name: Install WinRAR (winget)
+        shell: powershell
+        run: |
+          winget install -e --id RARLab.WinRAR --silent --accept-package-agreements --accept-source-agreements
+
+      - name: Install Bloxstrap (recommended Roblox bootstrapper)
+        shell: powershell
+        run: |
+          # Bloxstrap helps manage Roblox client; tends to auto-fetch proper Roblox binaries
+          winget install -e --id pizzaboxer.Bloxstrap --silent --accept-package-agreements --accept-source-agreements
+          # First run to initialize (non-blocking); ignore exit if GUI can't show
+          $bx = "$env:LOCALAPPDATA\Bloxstrap\Bloxstrap.exe"
+          if (Test-Path $bx) {
+            Start-Process -FilePath $bx -ArgumentList "--quiet" -WindowStyle Hidden
+            Start-Sleep -Seconds 10
+          } else {
+            Write-Host "Bloxstrap path not found (winget may have installed per-machine)."
+          }
+
+      - name: Attempt direct Roblox install (fallback)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          # Fallback ke installer resmi jika perlu
+          $rbx = "$env:TEMP\RobloxPlayerInstaller.exe"
+          Invoke-WebRequest -Uri "https://setup.rbxcdn.com/RobloxPlayerInstaller.exe" -OutFile $rbx
+          # Roblox installer gak dokumentasi switch silent yang stabil; coba run biasa (non-interaktif kadang tetap jalan)
+          Start-Process -FilePath $rbx -ArgumentList "" -WindowStyle Hidden -Wait
+          Remove-Item $rbx -Force -ErrorAction SilentlyContinue
+
+      - name: (Optional) Install Mesa3D software OpenGL (for old OpenGL apps)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          # Ini buat aplikasi OpenGL yg butuh "GPU" software. Roblox pakai D3D jadi ini opsional.
+          $releasesApi = "https://api.github.com/repos/pal1000/mesa-dist-win/releases/latest"
+          $zip = "$env:TEMP\mesa.zip"
+          $dst = "C:\mesa-dist-win"
+          try {
+            $resp = Invoke-RestMethod -Uri $releasesApi
+            $asset = $resp.assets | Where-Object { $_.name -match "msvc" -and $_.name -match "release" -and $_.name -like "*.zip" } | Select-Object -First 1
+            if ($null -ne $asset) {
+              Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip
+              if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
+              Expand-Archive -Path $zip -DestinationPath $dst
+              Remove-Item $zip -Force
+              # Salin opengl32.dll ke folder apps tertentu sesuai kebutuhan (contoh ke Notepad++ jika ada)
+              # Contoh:
+              # $appDir = "C:\Program Files\Notepad++"
+              # if (Test-Path $appDir) { Copy-Item "$dst\mesa\opengl32.dll" "$appDir\" -Force }
+            }
+          } catch {
+            Write-Host "Skip Mesa3D (download failed): $($_.Exception.Message)"
+          }
+
       - name: Show Access Info (no password in logs)
+        shell: powershell
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address : $env:TAILSCALE_IP"
           Write-Host "Username: Yanzz"
-          Write-Host "Password: (use the one configured in workflow)"
+          Write-Host "Password: (pakai yang di workflow)"
           Write-Host "==================`n"
 
       - name: Maintain Connection
+        shell: powershell
         run: |
           while ($true) {
             Write-Host "[$(Get-Date -Format o)] RDP active. Stop the job to terminate."
