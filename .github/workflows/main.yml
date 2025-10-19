@@ -9,8 +9,6 @@ jobs:
     timeout-minutes: 3600
 
     env:
-      # Jika mau ganti versi WinRAR atau pakai URL lain, ubah di sini
-      WINRAR_URL: "https://www.rarlab.com/rar/winrar-x64-6.22.exe"
       TAILSCALE_VERSION: "1.82.0"
 
     steps:
@@ -22,7 +20,6 @@ jobs:
       - name: Configure Core RDP Settings
         shell: pwsh
         run: |
-          # Enable Remote Desktop and (if needed) disable NLA
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
                            -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
@@ -30,21 +27,17 @@ jobs:
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
                            -Name "SecurityLayer" -Value 0 -Force
 
-          # Open firewall for RDP (TCP/3389)
           netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 | Out-Null
 
-          # Restart the Remote Desktop service to ensure changes take effect
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with specific password
         shell: pwsh
         run: |
-          # WARNING: Hardcoding passwords in workflows is insecure.
           $plain = "Evan123456"
           $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
 
-          # Create or update local user
           $existing = Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
           if ($null -eq $existing) {
             New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires | Out-Null
@@ -52,11 +45,9 @@ jobs:
             Set-LocalUser -Name "Yanzz" -Password $securePass
           }
 
-          # Add to required groups
           Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
 
-          # Basic validation
           if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
             Write-Error "User creation failed"
             exit 1
@@ -82,10 +73,8 @@ jobs:
             exit 1
           }
 
-          # Bring up Tailscale with a unique hostname
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="gh-runner-$env:GITHUB_RUN_ID"
 
-          # Wait for Tailscale IPv4
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 12) {
@@ -111,20 +100,30 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
-      - name: Install WinRAR (silent)
+      - name: Install WinRAR (via winget + fallback to Chocolatey)
         shell: pwsh
         run: |
-          if (-not $env:WINRAR_URL) {
-            Write-Error "WINRAR_URL not set"
+          Write-Host "Attempting to install WinRAR via winget..."
+          if (Get-Command winget -ErrorAction SilentlyContinue) {
+            Start-Process -FilePath "winget" -ArgumentList "install","--id","RARLab.WinRAR","-e","--silent","--accept-package-agreements","--accept-source-agreements" -Wait
+          } else {
+            Write-Host "winget not found. Fallback to Chocolatey..."
+            if (Get-Command choco -ErrorAction SilentlyContinue) {
+              Start-Process -FilePath "choco" -ArgumentList "install","winrar","-y" -Wait
+            } else {
+              Write-Error "Neither winget nor chocolatey found. Cannot install WinRAR."
+              exit 1
+            }
+          }
+
+          if (Get-Command winrar -ErrorAction SilentlyContinue) {
+            Write-Host "WinRAR installed and available in PATH."
+          } elseif (Test-Path "C:\\Program Files\\WinRAR\\WinRAR.exe") {
+            Write-Host "WinRAR installed at C:\\Program Files\\WinRAR\\WinRAR.exe"
+          } else {
+            Write-Error "WinRAR installation failed or path unknown."
             exit 1
           }
-          $installer = Join-Path $env:TEMP "winrar_inst.exe"
-          Write-Host "Downloading WinRAR from $env:WINRAR_URL"
-          Invoke-WebRequest -Uri $env:WINRAR_URL -OutFile $installer -UseBasicParsing
-          # WinRAR installer supports /S for silent install
-          Write-Host "Installing WinRAR (silent)"
-          Start-Process -FilePath $installer -ArgumentList "/S" -Wait
-          Remove-Item $installer -Force
 
       - name: Show Access Info (no password in logs)
         shell: pwsh
