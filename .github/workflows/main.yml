@@ -1,4 +1,4 @@
-name: Yanzz RDP (Windows Server 2022)
+name: Yanzz RDP (Choco - Mesa & WinRAR)
 
 on:
   workflow_dispatch:
@@ -10,60 +10,71 @@ jobs:
 
     steps:
       - name: Print Windows version
-        shell: powershell
         run: |
           systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
 
       - name: Configure Core RDP Settings
-        shell: powershell
         run: |
-          # Enable Remote Desktop & (opsional) matikan NLA (UserAuthentication=0)
+          # Enable Remote Desktop and disable NLA for easier connection
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                           -Name "fDenyTSConnections" -Value 0 -Force
+            -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                           -Name "UserAuthentication" -Value 0 -Force
+            -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                           -Name "SecurityLayer" -Value 0 -Force
+            -Name "SecurityLayer" -Value 0 -Force
+          
+          # Open firewall for RDP (TCP/3389)
+          netsh advfirewall firewall add rule name="Allow RDP" dir=in action=allow protocol=TCP localport=3389
 
-          # Firewall RDP
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 | Out-Null
-
-          # Restart RDP service
+          # Restart the Remote Desktop service to apply changes
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with specific password
-        shell: powershell
         run: |
-          # ⚠️ Hardcode password itu riskan; idealnya pakai secret.
+          # WARNING: Hardcoding passwords in workflows is insecure.
           $plain = "Evan123456"
           $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
-
+          
+          # Create or update local user
           $existing = Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
           if ($null -eq $existing) {
             New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires | Out-Null
           } else {
             Set-LocalUser -Name "Yanzz" -Password $securePass
           }
+          
+          # Add user to Administrators and Remote Desktop Users groups
           Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
 
-          if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
-            Write-Error "User creation failed"
-            exit 1
-          }
+      - name: ✨ Install Software with Chocolatey (Mesa, WinRAR)
+        run: |
+          # Install Chocolatey
+          Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          
+          # Install Mesa3D for software-based graphics. Pinning version for stability.
+          choco install mesa --version=24.1.1 -y
+          
+          # Copy the necessary DLLs to System32 to enable system-wide OpenGL support
+          # This path is stable because we pinned the version above.
+          Copy-Item -Path "C:\ProgramData\chocolatey\lib\mesa\tools\x64\opengl32.dll" -Destination "C:\Windows\System32\" -Force
+          Copy-Item -Path "C:\ProgramData\chocolatey\lib\mesa\tools\x64\libgallium_wgl.dll" -Destination "C:\Windows\System32\" -Force
+          Copy-Item -Path "C:\ProgramData\chocolatey\lib\mesa\tools\x64\libglapi.dll" -Destination "C:\Windows\System32\" -Force
+          
+          # Install WinRAR
+          choco install winrar -y
+          
+          Write-Host "Software installation complete."
 
       - name: Install Tailscale
-        shell: powershell
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.72.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
 
       - name: Establish Tailscale Connection
-        shell: powershell
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
@@ -71,107 +82,45 @@ jobs:
             Write-Error "secrets.TAILSCALE_AUTH_KEY is not set."
             exit 1
           }
+          
+          # Bring up Tailscale
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="gh-runner-$env:GITHUB_RUN_ID"
-
-          # Ambil IPv4 Tailscale
+          
+          # Wait for Tailscale to assign an IPv4 address
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 12) {
             $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
             if (-not $tsIP) { Start-Sleep -Seconds 5; $retries++ }
           }
-          if (-not $tsIP) { Write-Error "Tailscale IP not assigned. Exiting."; exit 1 }
+          
+          if (-not $tsIP) {
+            Write-Error "Tailscale IP not assigned. Exiting."
+            exit 1
+          }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
       - name: Verify RDP Accessibility (TCP 3389)
-        shell: powershell
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          $ok = (Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389).TcpTestSucceeded
-          if (-not $ok) { Write-Error "TCP 3389 test failed"; exit 1 }
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+            Write-Error "TCP connection to RDP port 3389 failed"
+            exit 1
+          }
           Write-Host "TCP connectivity successful!"
 
-      # === SOFTWARE SECTION (tanpa winget) ===
-      - name: Ensure Chocolatey available
-        shell: powershell
-        run: |
-          try { choco --version } catch { Write-Error "Chocolatey not available. Aborting."; exit 1 }
-
-      - name: Install WinRAR + VC++ + WebView2 + .NET Desktop Runtime
-        shell: powershell
-        run: |
-          choco install winrar -y --no-progress
-          choco install vcredist140 -y --no-progress
-          # WebView2 runtime (ID benar di Chocolatey: webview2-runtime)
-          choco install webview2-runtime -y --no-progress
-          # .NET Desktop Runtime 6.x (dibutuhkan Bloxstrap)
-          choco install dotnet-desktopruntime --version=6.0.32 -y --no-progress || choco install dotnet-desktopruntime -y --no-progress
-
-      - name: Install Bloxstrap (download resmi GitHub, silent)
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-          $api = "https://api.github.com/repos/bloxstraplabs/bloxstrap/releases/latest"
-          $tmp = "$env:TEMP\bloxstrap.exe"
-
-          # Ambil asset EXE terbaru
-          $rls = Invoke-RestMethod -Uri $api
-          $asset = $rls.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1
-          if (-not $asset) { Write-Error "Tidak menemukan asset EXE di rilis terbaru."; exit 1 }
-
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tmp
-
-          # Jalankan silent. -quiet menyembunyikan UI, -nolaunch agar tidak auto-launch Roblox
-          Start-Process -FilePath $tmp -ArgumentList "-quiet -nolaunch" -Wait
-
-          Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-
-      - name: Attempt direct Roblox install (fallback)
-        shell: powershell
-        continue-on-error: true
-        run: |
-          $rbx = "$env:TEMP\RobloxPlayerInstaller.exe"
-          try {
-            Invoke-WebRequest -Uri "https://setup.rbxcdn.com/RobloxPlayerInstaller.exe" -OutFile $rbx
-            Start-Process -FilePath $rbx -ArgumentList "" -WindowStyle Hidden -Wait
-          } catch {
-            Write-Host "Roblox fallback install failed: $($_.Exception.Message)"
-          } finally {
-            Remove-Item $rbx -Force -ErrorAction SilentlyContinue
-          }
-
-      - name: (Optional) Install Mesa3D software OpenGL (untuk app OpenGL lawas)
-        shell: powershell
-        continue-on-error: true
-        run: |
-          $releasesApi = "https://api.github.com/repos/pal1000/mesa-dist-win/releases/latest"
-          $zip = "$env:TEMP\mesa.zip"
-          $dst = "C:\mesa-dist-win"
-          try {
-            $resp = Invoke-RestMethod -Uri $releasesApi
-            $asset = $resp.assets | Where-Object { $_.name -match "msvc" -and $_.name -match "release" -and $_.name -like "*.zip" } | Select-Object -First 1
-            if ($null -ne $asset) {
-              Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip
-              if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
-              Expand-Archive -Path $zip -DestinationPath $dst
-              Remove-Item $zip -Force
-            }
-          } catch {
-            Write-Host "Skip Mesa3D (download failed): $($_.Exception.Message)"
-          }
-
       - name: Show Access Info (no password in logs)
-        shell: powershell
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address : $env:TAILSCALE_IP"
           Write-Host "Username: Yanzz"
-          Write-Host "Password: (pakai yang di workflow)"
+          Write-Host "Password: (use the one configured in workflow)"
           Write-Host "==================`n"
 
       - name: Maintain Connection
-        shell: powershell
         run: |
           while ($true) {
             Write-Host "[$(Get-Date -Format o)] RDP active. Stop the job to terminate."
             Start-Sleep -Seconds 300
+          }
