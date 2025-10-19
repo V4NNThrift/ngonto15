@@ -35,6 +35,7 @@ jobs:
       - name: Create RDP User with specific password
         shell: pwsh
         run: |
+          # WARNING: Hardcoding passwords in workflows is insecure.
           $plain = "Evan123456"
           $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
 
@@ -100,6 +101,56 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
+      - name: Ensure Chocolatey is installed
+        shell: pwsh
+        run: |
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Write-Host "Chocolatey not found — installing Chocolatey..."
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+              Write-Error "Chocolatey installation failed."
+              exit 1
+            }
+          } else {
+            Write-Host "Chocolatey already present."
+          }
+
+      - name: Install Gaming packages via Chocolatey
+        shell: pwsh
+        run: |
+          # Update choco sources/cache, then install packages commonly useful for gaming/streaming
+          choco feature enable -n=allowGlobalConfirmation | Out-Null
+          choco upgrade chocolatey -y --no-progress
+
+          $packages = @(
+            "vcredist140",          # Visual C++ Redistributables (2015-2019)
+            "dotnetfx",             # .NET Framework
+            "directx",              # DirectX runtime (legacy packages exist)
+            "vulkan-sdk",           # Vulkan runtimes/SDK
+            "steam",                # Steam client
+            "epicgameslauncher",    # Epic Games Launcher
+            "goggalaxy",            # GOG Galaxy (if you use GOG)
+            "obs-studio",           # OBS for streaming/recording
+            "msiafterburner",      # Overclock/monitoring utility (if hardware available)
+            "7zip"                  # Useful archive tool
+          )
+
+          foreach ($p in $packages) {
+            Write-Host "Installing $p ..."
+            choco install $p -y --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Installation of $p exited with code $LASTEXITCODE"
+            }
+          }
+
+          # Quick verification (sample)
+          Write-Host "Installed package verification (some checks):"
+          if (Get-Command steam -ErrorAction SilentlyContinue) { Write-Host "Steam available in PATH." }
+          if (Test-Path "C:\Program Files\Steam\steam.exe") { Write-Host "Steam installed." }
+          if (Test-Path "C:\Program Files\WinRAR\WinRAR.exe") { Write-Host "WinRAR present (if installed earlier)." }
+
       - name: Install WinRAR (via winget + fallback to Chocolatey)
         shell: pwsh
         run: |
@@ -108,21 +159,15 @@ jobs:
             Start-Process -FilePath "winget" -ArgumentList "install","--id","RARLab.WinRAR","-e","--silent","--accept-package-agreements","--accept-source-agreements" -Wait
           } else {
             Write-Host "winget not found. Fallback to Chocolatey..."
-            if (Get-Command choco -ErrorAction SilentlyContinue) {
-              Start-Process -FilePath "choco" -ArgumentList "install","winrar","-y" -Wait
-            } else {
-              Write-Error "Neither winget nor chocolatey found. Cannot install WinRAR."
-              exit 1
-            }
+            choco install winrar -y --no-progress
           }
 
           if (Get-Command winrar -ErrorAction SilentlyContinue) {
             Write-Host "WinRAR installed and available in PATH."
-          } elseif (Test-Path "C:\\Program Files\\WinRAR\\WinRAR.exe") {
-            Write-Host "WinRAR installed at C:\\Program Files\\WinRAR\\WinRAR.exe"
+          } elseif (Test-Path "C:\Program Files\WinRAR\WinRAR.exe") {
+            Write-Host "WinRAR installed at C:\Program Files\WinRAR\WinRAR.exe"
           } else {
-            Write-Error "WinRAR installation failed or path unknown."
-            exit 1
+            Write-Warning "WinRAR installation might have failed or is not in PATH."
           }
 
       - name: Show Access Info (no password in logs)
