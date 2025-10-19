@@ -1,4 +1,4 @@
-name: Yanzz RDP (Windows Server 2022) + MuMu
+name: Yanzz RDP (Performance Max)
 
 on:
   workflow_dispatch:
@@ -6,218 +6,101 @@ on:
 jobs:
   secure-rdp:
     runs-on: windows-2022
-    timeout-minutes: 3600
-
-    env:
-      TAILSCALE_VERSION: "1.82.0"
-      # Optional: override direct URL kalau mau fix ke versi tertentu
-      MUMU_DIRECT_URL: ""
+    timeout-minutes: 3600  # biar tahan lama, cocok buat AFK Roblox
 
     steps:
-      - name: Print Windows version
+      - name: Enable RDP + Firewall
         shell: pwsh
         run: |
-          systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
-
-      - name: Configure Core RDP Settings
-        shell: pwsh
-        run: |
-          # Enable RDP & relax NLA (biar gampang masuk)
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-
-          # Open firewall for RDP
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 | Out-Null
-
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                           -Name "fDenyTSConnections" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389 | Out-Null
           Restart-Service -Name TermService -Force
+          Write-Host "✅ RDP enabled and firewall opened."
 
-      - name: Create RDP User with specific password
+      - name: Create RDP User
         shell: pwsh
         run: |
-          # WARNING: insecure; biarin sesuai permintaan lu
-          $plain = "Evan123456"
-          $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
-
-          $existing = Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
-          if ($null -eq $existing) {
-            New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires | Out-Null
-          } else {
-            Set-LocalUser -Name "Yanzz" -Password $securePass
+          $user = "Yanzz"
+          $pass = ConvertTo-SecureString "Evan123456" -AsPlainText -Force
+          if (-not (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name $user -Password $pass -AccountNeverExpires | Out-Null
           }
+          Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
+          Write-Host "✅ User $user created & added to RDP/Admin groups."
 
-          Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
-
-          if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
-            Write-Error "User creation failed"
-            exit 1
-          }
-
-      - name: Install Tailscale
+      - name: Boost Power Plan (High Performance)
         shell: pwsh
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
+          powercfg /setactive SCHEME_MIN
+          powercfg -change -monitor-timeout-ac 0
+          powercfg -change -disk-timeout-ac 0
+          powercfg -change -standby-timeout-ac 0
+          powercfg -change -hibernate-timeout-ac 0
+          Write-Host "⚡ High performance plan applied (no sleep/hibernate)."
 
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
-
-      - name: Establish Tailscale Connection
-        shell: pwsh
-        env:
-          TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-        run: |
-          if (-not $env:TS_KEY) {
-            Write-Error "secrets.TAILSCALE_AUTH_KEY is not set."
-            exit 1
-          }
-
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="gh-runner-$env:GITHUB_RUN_ID"
-
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 12) {
-            $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
-            if (-not $tsIP) { Start-Sleep -Seconds 5; $retries++ }
-          }
-          if (-not $tsIP) { Write-Error "Tailscale IP not assigned. Exiting."; exit 1 }
-
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-
-      - name: Verify RDP Accessibility (TCP 3389)
+      - name: Optimize Windows Visuals & Services
         shell: pwsh
         run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) { Write-Error "TCP 3389 failed"; exit 1 }
-          Write-Host "TCP connectivity successful!"
-
-      - name: Ensure Chocolatey is installed
-        shell: pwsh
-        run: |
-          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-            Write-Host "Installing Chocolatey..."
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) { Write-Error "Chocolatey install failed"; exit 1 }
+          Write-Host "🔧 Disabling heavy Windows features for max FPS..."
+          # Disable Windows Search, SysMain (Superfetch), Themes
+          $services = @("SysMain","WSearch","DiagTrack","PrintSpooler","Themes")
+          foreach ($svc in $services) {
+            if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+              Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
+              Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+              Write-Host "⛔ Disabled service: $svc"
+            }
           }
 
-      - name: Install WinRAR (fallback via choco)
-        shell: pwsh
-        run: |
-          choco install winrar -y --no-progress
-          if (-not (Test-Path "C:\Program Files\WinRAR\WinRAR.exe")) { Write-Warning "WinRAR not found after install" }
-
-      - name: Download & Install MuMu Player (auto)
-        shell: pwsh
-        run: |
-          $dl = ""
-          if ($env:MUMU_DIRECT_URL -and $env:MUMU_DIRECT_URL.Trim().Length -gt 0) {
-            $dl = $env:MUMU_DIRECT_URL
-          } else {
-            # Ambil link .exe terbaru dari halaman download resmi
-            $page = Invoke-WebRequest -Uri "https://www.mumuplayer.com/download/" -UseBasicParsing  # situs resmi, konten bisa berubah
-            $exeLinks = $page.Links | Where-Object { $_.href -match "\.exe$" } | Select-Object -ExpandProperty href
-            if ($exeLinks -and $exeLinks.Count -gt 0) { $dl = $exeLinks[0] }
-          }
-          if (-not $dl) { Write-Error "MuMu download URL not found"; exit 1 }
-
-          $mumuInst = Join-Path $env:TEMP "mumu_setup.exe"
-          Write-Host "Downloading MuMu from: $dl"
-          Invoke-WebRequest -Uri $dl -OutFile $mumuInst -UseBasicParsing
-
-          # Coba berbagai mode silent yang umum (NSIS/Inno/MSI)
-          $silentArgs = @("/S","/silent","/verysilent","/quiet","/qn")
-          $installed = $false
-          foreach ($arg in $silentArgs) {
-            Write-Host "Trying install with argument: $arg"
-            try {
-              Start-Process -FilePath $mumuInst -ArgumentList $arg -Wait -NoNewWindow
-              Start-Sleep -Seconds 5
-              if (Test-Path "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe" -or
-                  Test-Path "C:\Program Files\Netease\MuMu\emulator\MuMu.exe" -or
-                  Test-Path "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe") {
-                $installed = $true
-                break
-              }
-            } catch { }
-          }
-          if (-not $installed) {
-            Write-Warning "Silent install may not be supported; trying normal launch (non-interactive env may fail)."
-            Start-Process -FilePath $mumuInst -Wait -NoNewWindow
-          }
-          Remove-Item $mumuInst -Force -ErrorAction SilentlyContinue
-
-          # Deteksi lokasi install
-          $global:MuMuExe = $null
-          $paths = @(
-            "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe",
-            "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe",
-            "C:\Program Files\Netease\MuMu\emulator\MuMu.exe"
-          )
-          foreach ($p in $paths) { if (Test-Path $p) { $global:MuMuExe = $p; break } }
-          if (-not $global:MuMuExe) { Write-Error "MuMu not detected after install"; exit 1 }
-          "MUMU_EXE=$global:MuMuExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
-          Write-Host "MuMu at: $global:MuMuExe"
-
-      - name: Windows Performance Tweaks (RDP/VM)
-        shell: pwsh
-        run: |
-          powercfg /setactive SCHEME_MIN  # High performance
-          # Matikan efek visual berat
+          # Disable visual effects
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
-          reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012078010000000 /f
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Search" /v CortanaConsent /t REG_DWORD /d 0 /f
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" /v GlobalUserDisabled /t REG_DWORD /d 1 /f
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 26 /f
+          reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 0 /f
 
-      - name: Launch MuMu + ADB Tweaks (disable Android animations)
+          # Disable animations in RDP sessions
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableMenuAnims /t REG_DWORD /d 1 /f
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableFullWindowDrag /t REG_DWORD /d 1 /f
+          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableWallpaper /t REG_DWORD /d 1 /f
+
+          Write-Host "🎯 Visuals simplified, animations off, theme stopped."
+
+      - name: Network & TCP Optimization
         shell: pwsh
         run: |
-          $exe = $env:MUMU_EXE
-          if (-not (Test-Path $exe)) { Write-Error "MuMu exe not found"; exit 1 }
+          Write-Host "🌐 Applying TCP performance tweaks..."
+          netsh int tcp set global autotuninglevel=high
+          netsh int tcp set global congestionprovider=ctcp
+          netsh int tcp set global ecncapability=enabled
+          netsh int tcp set global chimney=disabled
+          Write-Host "✅ TCP tuned for throughput & low latency."
 
-          # Start MuMu once to spawn the Android VM
-          Start-Process -FilePath $exe
-          Start-Sleep -Seconds 25  # kasih waktu boot
-
-          # Coba connect ADB (port umum 7555) – lihat doc MuMu untuk adb connect. 
-          # Jika beda, tinggal ubah port di bawah.
-          $adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
-          if (-not (Test-Path $adb)) {
-            # sediakan adb minimal via choco
-            choco install adb -y --no-progress
-            $adb = (Get-Command adb).Source
+      - name: System Cleanup
+        shell: pwsh
+        run: |
+          Write-Host "🧹 Cleaning temp files..."
+          $tempPaths = @($env:TEMP, "$env:SystemRoot\Temp")
+          foreach ($p in $tempPaths) {
+            if (Test-Path $p) {
+              Get-ChildItem -Path $p -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
+            }
           }
+          Write-Host "✅ Cleanup done."
 
-          & $adb connect 127.0.0.1:7555 | Out-Null
-
-          # Matikan animasi Android biar smooth (muat ulang emulator setelah ini makin terasa)
-          & $adb shell settings put global animator_duration_scale 0
-          & $adb shell settings put global transition_animation_scale 0
-          & $adb shell settings put global window_animation_scale 0
-
-          # Info: untuk set CPU core/RAM/Resolution secara maksimal, atur via Settings MuMu Player (UI).
-          # Tips resmi & panduan ada di help center MuMu. 
-          Write-Host "ADB tweaks applied (animation scales = 0)."
-
-      - name: Show Access Info (no password in logs)
+      - name: Verify Settings Summary
         shell: pwsh
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address : $env:TAILSCALE_IP"
-          Write-Host "Username: Yanzz"
-          Write-Host "Password: (use the one configured in workflow)"
-          Write-Host "MuMu   : $env:MUMU_EXE"
-          Write-Host "==================`n"
+          Write-Host "`n=== SYSTEM STATUS ==="
+          powercfg /getactivescheme
+          Get-Service -Name SysMain,WSearch,Themes -ErrorAction SilentlyContinue | Format-Table -AutoSize
+          netsh int tcp show global
+          Write-Host "=====================`n"
 
-      - name: Maintain Connection
+      - name: Keep RDP Session Alive
         shell: pwsh
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] RDP + MuMu ready. Stop the job to terminate."
+            Write-Host "[$(Get-Date -Format o)] 🟢 RDP Performance Session Active — stop manually to end."
             Start-Sleep -Seconds 300
           }
