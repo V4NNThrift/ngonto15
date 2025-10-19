@@ -91,39 +91,40 @@ jobs:
           if (-not $ok) { Write-Error "TCP 3389 test failed"; exit 1 }
           Write-Host "TCP connectivity successful!"
 
-      # === SOFTWARE SECTION (pakai Chocolatey, no winget) ===
-      - name: Ensure Chocolatey available (should be preinstalled on runner)
+      # === SOFTWARE SECTION (tanpa winget) ===
+      - name: Ensure Chocolatey available
         shell: powershell
         run: |
-          try {
-            choco --version
-          } catch {
-            Write-Error "Chocolatey not available; this image should have it. Aborting."
-            exit 1
-          }
+          try { choco --version } catch { Write-Error "Chocolatey not available. Aborting."; exit 1 }
 
-      - name: Install software (WinRAR, VC++ runtime, Bloxstrap)
+      - name: Install WinRAR + VC++ + WebView2 + .NET Desktop Runtime
         shell: powershell
         run: |
           choco install winrar -y --no-progress
           choco install vcredist140 -y --no-progress
-          choco install bloxstrap -y --no-progress
-          # (opsional) WebView2 runtime via choco, jika diperlukan oleh app lain
-          choco install microsoft-edge-webview2-runtime -y --no-progress
+          # WebView2 runtime (ID benar di Chocolatey: webview2-runtime)
+          choco install webview2-runtime -y --no-progress
+          # .NET Desktop Runtime 6.x (dibutuhkan Bloxstrap)
+          choco install dotnet-desktopruntime --version=6.0.32 -y --no-progress || choco install dotnet-desktopruntime -y --no-progress
 
-      - name: Initialize Bloxstrap (quiet)
+      - name: Install Bloxstrap (download resmi GitHub, silent)
         shell: powershell
-        continue-on-error: true
         run: |
-          $bxUser = "$env:LOCALAPPDATA\Bloxstrap\Bloxstrap.exe"
-          $bxMachine = "C:\Program Files\Bloxstrap\Bloxstrap.exe"
-          $bx = if (Test-Path $bxUser) { $bxUser } elseif (Test-Path $bxMachine) { $bxMachine } else { $null }
-          if ($bx) {
-            Start-Process -FilePath $bx -ArgumentList "--quiet" -WindowStyle Hidden
-            Start-Sleep -Seconds 10
-          } else {
-            Write-Host "Bloxstrap executable not found (yet)."
-          }
+          $ErrorActionPreference = "Stop"
+          $api = "https://api.github.com/repos/bloxstraplabs/bloxstrap/releases/latest"
+          $tmp = "$env:TEMP\bloxstrap.exe"
+
+          # Ambil asset EXE terbaru
+          $rls = Invoke-RestMethod -Uri $api
+          $asset = $rls.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1
+          if (-not $asset) { Write-Error "Tidak menemukan asset EXE di rilis terbaru."; exit 1 }
+
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $tmp
+
+          # Jalankan silent. -quiet menyembunyikan UI, -nolaunch agar tidak auto-launch Roblox
+          Start-Process -FilePath $tmp -ArgumentList "-quiet -nolaunch" -Wait
+
+          Remove-Item $tmp -Force -ErrorAction SilentlyContinue
 
       - name: Attempt direct Roblox install (fallback)
         shell: powershell
@@ -143,7 +144,6 @@ jobs:
         shell: powershell
         continue-on-error: true
         run: |
-          # Roblox biasanya pakai Direct3D; ini opsional buat aplikasi OpenGL.
           $releasesApi = "https://api.github.com/repos/pal1000/mesa-dist-win/releases/latest"
           $zip = "$env:TEMP\mesa.zip"
           $dst = "C:\mesa-dist-win"
@@ -155,10 +155,6 @@ jobs:
               if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
               Expand-Archive -Path $zip -DestinationPath $dst
               Remove-Item $zip -Force
-              # Untuk memakai Mesa pada app tertentu, copy-kan opengl32.dll ke folder app tsb.
-              # Contoh:
-              # $appDir = "C:\SomeApp"
-              # if (Test-Path $appDir) { Copy-Item "$dst\mesa\opengl32.dll" "$appDir\" -Force }
             }
           } catch {
             Write-Host "Skip Mesa3D (download failed): $($_.Exception.Message)"
@@ -179,4 +175,3 @@ jobs:
           while ($true) {
             Write-Host "[$(Get-Date -Format o)] RDP active. Stop the job to terminate."
             Start-Sleep -Seconds 300
-          }
