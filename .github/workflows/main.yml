@@ -1,4 +1,4 @@
-name: Yanzz RDP (Performance Max)
+name: Yanzz RDP (Performance Max + IP Access)
 
 on:
   workflow_dispatch:
@@ -6,7 +6,10 @@ on:
 jobs:
   secure-rdp:
     runs-on: windows-2022
-    timeout-minutes: 3600  # biar tahan lama, cocok buat AFK Roblox
+    timeout-minutes: 3600
+
+    env:
+      TAILSCALE_VERSION: "1.82.0"
 
     steps:
       - name: Enable RDP + Firewall
@@ -30,6 +33,35 @@ jobs:
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
           Write-Host "✅ User $user created & added to RDP/Admin groups."
 
+      - name: Install Tailscale
+        shell: pwsh
+        run: |
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
+          $out = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $url -OutFile $out
+          Start-Process msiexec.exe -ArgumentList "/i `"$out`" /quiet /norestart" -Wait
+          Remove-Item $out -Force
+          Write-Host "✅ Tailscale installed."
+
+      - name: Connect Tailscale
+        shell: pwsh
+        env:
+          TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
+        run: |
+          if (-not $env:TS_KEY) {
+            Write-Error "❌ Missing secrets.TAILSCALE_AUTH_KEY"
+            exit 1
+          }
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
+          Start-Sleep -Seconds 10
+          $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
+          if (-not $ip) {
+            Write-Error "❌ No Tailscale IP assigned."
+            exit 1
+          }
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+          Write-Host "🌐 Tailscale connected. IP: $ip"
+
       - name: Boost Power Plan (High Performance)
         shell: pwsh
         run: |
@@ -38,69 +70,51 @@ jobs:
           powercfg -change -disk-timeout-ac 0
           powercfg -change -standby-timeout-ac 0
           powercfg -change -hibernate-timeout-ac 0
-          Write-Host "⚡ High performance plan applied (no sleep/hibernate)."
+          Write-Host "⚡ High performance mode enabled."
 
       - name: Optimize Windows Visuals & Services
         shell: pwsh
         run: |
-          Write-Host "🔧 Disabling heavy Windows features for max FPS..."
-          # Disable Windows Search, SysMain (Superfetch), Themes
-          $services = @("SysMain","WSearch","DiagTrack","PrintSpooler","Themes")
-          foreach ($svc in $services) {
+          Write-Host "🔧 Disabling unneeded services..."
+          $svcs = @("SysMain","WSearch","DiagTrack","PrintSpooler","Themes")
+          foreach ($svc in $svcs) {
             if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
               Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
               Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-              Write-Host "⛔ Disabled service: $svc"
+              Write-Host "⛔ Disabled: $svc"
             }
           }
 
-          # Disable visual effects
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
           reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 26 /f
           reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 0 /f
-
-          # Disable animations in RDP sessions
           reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableMenuAnims /t REG_DWORD /d 1 /f
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableFullWindowDrag /t REG_DWORD /d 1 /f
           reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableWallpaper /t REG_DWORD /d 1 /f
 
-          Write-Host "🎯 Visuals simplified, animations off, theme stopped."
+          Write-Host "🎯 Performance visuals applied."
 
       - name: Network & TCP Optimization
         shell: pwsh
         run: |
-          Write-Host "🌐 Applying TCP performance tweaks..."
+          Write-Host "🌐 Network optimizations..."
           netsh int tcp set global autotuninglevel=high
           netsh int tcp set global congestionprovider=ctcp
           netsh int tcp set global ecncapability=enabled
           netsh int tcp set global chimney=disabled
-          Write-Host "✅ TCP tuned for throughput & low latency."
 
-      - name: System Cleanup
+      - name: Show RDP Connection Info
         shell: pwsh
         run: |
-          Write-Host "🧹 Cleaning temp files..."
-          $tempPaths = @($env:TEMP, "$env:SystemRoot\Temp")
-          foreach ($p in $tempPaths) {
-            if (Test-Path $p) {
-              Get-ChildItem -Path $p -Recurse -ErrorAction SilentlyContinue | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-            }
-          }
-          Write-Host "✅ Cleanup done."
+          Write-Host "`n=== RDP CONNECTION INFO ==="
+          Write-Host "🔹 Address : $env:TAILSCALE_IP"
+          Write-Host "🔹 Username: Yanzz"
+          Write-Host "🔹 Password: Evan123456"
+          Write-Host "============================`n"
 
-      - name: Verify Settings Summary
-        shell: pwsh
-        run: |
-          Write-Host "`n=== SYSTEM STATUS ==="
-          powercfg /getactivescheme
-          Get-Service -Name SysMain,WSearch,Themes -ErrorAction SilentlyContinue | Format-Table -AutoSize
-          netsh int tcp show global
-          Write-Host "=====================`n"
-
-      - name: Keep RDP Session Alive
+      - name: Keep Alive (AFK Mode)
         shell: pwsh
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP Performance Session Active — stop manually to end."
+            Write-Host "[$(Get-Date -Format o)] 🟢 RDP Active | IP: $env:TAILSCALE_IP"
             Start-Sleep -Seconds 300
           }
