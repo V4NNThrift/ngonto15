@@ -1,4 +1,4 @@
-name: Yanzz RDP (Windows Server 2022)
+name: Evann RDP (Windows Server 2022) - WinRAR + Optional SwiftShader
 
 on:
   workflow_dispatch:
@@ -27,41 +27,96 @@ jobs:
           netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389 | Out-Null
 
-          # Restart the Remote Desktop service to ensure changes take effect
+          # Restart the Remote Desktop service
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with specific password
+      - name: Create/Replace RDP User -> Evann (INSECURE: hardcoded password)
         run: |
-          # WARNING: Hardcoding passwords in workflows is insecure.
+          # WARNING: Hardcoding passwords in workflows is insecure. Use secrets.RDP_PASSWORD instead.
           $plain = "Evan123456"
           $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
 
-          # Create or update local user
-          $existing = Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
-          if ($null -eq $existing) {
-            New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires | Out-Null
-          } else {
-            Set-LocalUser -Name "Yanzz" -Password $securePass
+          # Remove old user Yanzz if exists (optional cleanup)
+          if (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue) {
+            try {
+              # Attempt to remove from groups then remove user
+              Remove-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
+              Remove-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
+              Remove-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
+            } catch { Write-Host "Failed to remove Yanzz or not present." }
           }
 
-          # Add to required groups
-          Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
+          # Create or update user Evann
+          $existing = Get-LocalUser -Name "Evann" -ErrorAction SilentlyContinue
+          if ($null -eq $existing) {
+            New-LocalUser -Name "Evann" -Password $securePass -AccountNeverExpires | Out-Null
+          } else {
+            Set-LocalUser -Name "Evann" -Password $securePass
+          }
 
-          # Basic validation
-          if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
+          Add-LocalGroupMember -Group "Administrators" -Member "Evann" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Evann" -ErrorAction SilentlyContinue
+
+          if (-not (Get-LocalUser -Name "Evann" -ErrorAction SilentlyContinue)) {
             Write-Error "User creation failed"
             exit 1
           }
 
-      - name: Install Tailscale
-        run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
+          # store non-secret info for later steps (DO NOT store actual password in env in production)
+          echo "RDP_USER=Evann" >> $env:GITHUB_ENV
+          echo "RDP_PLAINTEXT_WARNING=Password is hardcoded in workflow (INSECURE)" >> $env:GITHUB_ENV
 
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+      - name: Install WinRAR (winget -> fallback choco)
+        run: |
+          # Try winget first (winget may be available on the image)
+          $installed = $false
+          try {
+            Write-Host "Attempting winget install for WinRAR..."
+            winget install --id RarLab.WinRAR -e --silent
+            $installed = $true
+          } catch {
+            Write-Host "winget install failed or not available: $_"
+          }
+
+          if (-not $installed) {
+            try {
+              Write-Host "Attempting Chocolatey install for winrar..."
+              choco install winrar -y
+              $installed = $true
+            } catch {
+              Write-Host "choco install failed or not available: $_"
+            }
+          }
+
+          if ($installed) {
+            Write-Host "WinRAR installation attempted (check logs)."
+          } else {
+            Write-Host "Could not install WinRAR via winget/choco. You may need to add manual download/install."
+          }
+
+      - name: (Optional) Install SwiftShader (software rasterizer) - PROVIDED BY USER/SECRET URL
+        if: ${{ secrets.SWIFT_SHADER_URL != '' }}
+        env:
+          SWIFT_URL: ${{ secrets.SWIFT_SHADER_URL }}
+        run: |
+          # This step is OPTIONAL and only runs if you set a secret SWIFT_SHADER_URL
+          # Provide a direct zip URL to a SwiftShader release (or other software rasterizer).
+          # Example usage: set repository secret SWIFT_SHADER_URL to a release zip url.
+          if (-not $env:SWIFT_URL) {
+            Write-Host "No SWIFT_SHADER_URL provided. Skipping SwiftShader step."
+            exit 0
+          }
+
+          $out = "$env:TEMP\swiftshader.zip"
+          Write-Host "Downloading SwiftShader from $env:SWIFT_URL"
+          Invoke-WebRequest -Uri $env:SWIFT_URL -OutFile $out -UseBasicParsing
+          $dest = "C:\SwiftShader"
+          if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Path $dest | Out-Null }
+          Expand-Archive -LiteralPath $out -DestinationPath $dest -Force
+          Remove-Item $out -Force
+          Write-Host "SwiftShader extracted to $dest. To use SwiftShader with games, you usually need to place the proper DLL (e.g., d3d9.dll/d3d11.dll) into the game's folder or configure the app to use the software rasterizer."
+
+          # Note: using SwiftShader may require per-game configuration (dropping DLLs). It is NOT a universal fix.
 
       - name: Establish Tailscale Connection
         env:
@@ -72,10 +127,8 @@ jobs:
             exit 1
           }
 
-          # Bring up Tailscale with a unique hostname
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="gh-runner-$env:GITHUB_RUN_ID"
 
-          # Wait for Tailscale IPv4
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 12) {
@@ -87,7 +140,6 @@ jobs:
             Write-Error "Tailscale IP not assigned. Exiting."
             exit 1
           }
-
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
       - name: Verify RDP Accessibility (TCP 3389)
@@ -104,8 +156,8 @@ jobs:
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address : $env:TAILSCALE_IP"
-          Write-Host "Username: Yanzz"
-          Write-Host "Password: (use the one configured in workflow)"
+          Write-Host "Username: $env:RDP_USER"
+          Write-Host "Password: (configured in workflow; don't print in logs in production)"
           Write-Host "==================`n"
 
       - name: Maintain Connection
