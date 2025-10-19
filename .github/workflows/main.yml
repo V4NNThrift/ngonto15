@@ -1,4 +1,4 @@
-name: Yanzz RDP (Windows 2022 + MuMu + 60h AFK)
+name: Yanzz RDP (Win2022 + MuMu, 60h)
 
 on:
   workflow_dispatch:
@@ -6,19 +6,19 @@ on:
 jobs:
   rdp-mumu:
     runs-on: windows-2022
-    timeout-minutes: 3600  # 60 jam, sama seperti awal
+    timeout-minutes: 3600
 
     env:
       TAILSCALE_VERSION: "1.82.0"
+      # Opsional: isi manual bila sudah punya direct .exe
       MUMU_DIRECT_URL: ""
 
     steps:
-      # --- Enable RDP + create user ---
+      # --- RDP & user ---------------------------------------------------------
       - name: Enable RDP & open firewall
         shell: pwsh
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                           -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           netsh advfirewall firewall add rule name="RDP-3389" dir=in action=allow protocol=TCP localport=3389 | Out-Null
           Restart-Service -Name TermService -Force
           Write-Host "✅ RDP enabled & firewall opened."
@@ -33,9 +33,9 @@ jobs:
           }
           Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
-          Write-Host "✅ User $user created & ready."
+          Write-Host "✅ User $user ready."
 
-      # --- Install & connect Tailscale ---
+      # --- Tailscale (IP) -----------------------------------------------------
       - name: Install Tailscale
         shell: pwsh
         run: |
@@ -51,105 +51,16 @@ jobs:
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          if (-not $env:TS_KEY) {
-            Write-Error "❌ secrets.TAILSCALE_AUTH_KEY not set."
-            exit 1
-          }
+          if (-not $env:TS_KEY) { Write-Error "❌ secrets.TAILSCALE_AUTH_KEY not set."; exit 1 }
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
           Start-Sleep -Seconds 10
           $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
           if (-not $ip) { Write-Error "❌ No Tailscale IP found."; exit 1 }
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-          Write-Host "🌐 Tailscale connected. IP: $ip"
-
-      # --- Set performance mode ---
-      - name: High Performance Power Plan
-        shell: pwsh
-        run: |
-          powercfg /setactive SCHEME_MIN
-          powercfg -change -monitor-timeout-ac 0
-          powercfg -change -disk-timeout-ac 0
-          powercfg -change -standby-timeout-ac 0
-          powercfg -change -hibernate-timeout-ac 0
-          Write-Host "⚡ Power plan set to High Performance."
-
-      # --- Enable RDP H.264 Codec (AVC444) ---
-      - name: Enable RDP AVC444 Codec
-        shell: pwsh
-        run: |
-          $key = "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
-          if (-not (Test-Path $key)) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT" -Name "Terminal Services" -Force | Out-Null }
-          Set-ItemProperty -Path $key -Name "AVC444ModePreferred" -Type DWord -Value 1 -Force
-          Set-ItemProperty -Path $key -Name "UseAVCCodecForRDP" -Type DWord -Value 1 -Force
-          Set-ItemProperty -Path $key -Name "PreferHardwareEncoding" -Type DWord -Value 1 -Force
-          Write-Host "🎬 Enabled RDP AVC/H.264 codec."
-
-      # --- Download & install MuMu Player ---
-      - name: Download and Install MuMu Player
-        shell: pwsh
-        run: |
-          function Get-LatestMuMuUrl {
-            param([string]$OverrideUrl)
-            if ($OverrideUrl -and $OverrideUrl.Trim().Length -gt 0) { return $OverrideUrl }
-            $page = Invoke-WebRequest -Uri "https://www.mumuplayer.com/download/" -UseBasicParsing
-            $link = $page.Links | Where-Object { $_.href -match "\.exe$" } | Select-Object -First 1 -ExpandProperty href
-            if ($link -notmatch "^https?://") { $link = "https://www.mumuplayer.com$link" }
-            return $link
-          }
-
-          $url = Get-LatestMuMuUrl -OverrideUrl $env:MUMU_DIRECT_URL
-          $file = "$env:TEMP\mumu_setup.exe"
-          Write-Host "⬇️ Downloading MuMu Player from: $url"
-          Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
-          Write-Host "🚀 Installing MuMu Player..."
-          Start-Process -FilePath $file -ArgumentList "/S" -Wait -NoNewWindow
-          Start-Sleep -Seconds 10
-          Write-Host "✅ MuMu installation completed (check manually via RDP if needed)."
-
-      # --- Show RDP info ---
-      - name: Show Access Info
-        shell: pwsh
-        run: |
-          Write-Host "`n=== RDP ACCESS INFO ==="
-          Write-Host "Address : $env:TAILSCALE_IP"
-          Write-Host "Username: Yanzz"
-          Write-Host "Password: Evan123456"
-          Write-Host "=========================`n"
-
-      # --- Keep alive for 60 hours ---
-      - name: Keep Alive
-        shell: pwsh
-        run: |
-          while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP running | IP: $env:TAILSCALE_IP"
-            Start-Sleep -Seconds 300
-          }
-      # --- Tailscale untuk IP RDP --------------------------------------------
-      - name: Install Tailscale
-        shell: pwsh
-        run: |
-          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
-          $out = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $url -OutFile $out
-          Start-Process msiexec.exe -ArgumentList "/i `"$out`" /quiet /norestart" -Wait
-          Remove-Item $out -Force
-          Write-Host "✅ Tailscale installed."
-
-      - name: Connect Tailscale
-        shell: pwsh
-        env:
-          TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
-        run: |
-          if (-not $env:TS_KEY) { Write-Error "❌ secrets.TAILSCALE_AUTH_KEY not set"; exit 1 }
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
-          Start-Sleep -Seconds 8
-          $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
-          if (-not $ip) { Write-Error "❌ No Tailscale IP"; exit 1 }
-          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "🌐 Tailscale IP: $ip"
 
-      # --- Performance ringan (tanpa tweak berat) ----------------------------
-      - name: High performance power plan + no sleep
+      # --- Performance ringan -------------------------------------------------
+      - name: High Performance power plan (no sleep)
         shell: pwsh
         run: |
           powercfg /setactive SCHEME_MIN
@@ -157,46 +68,97 @@ jobs:
           powercfg -change -disk-timeout-ac 0
           powercfg -change -standby-timeout-ac 0
           powercfg -change -hibernate-timeout-ac 0
-          Write-Host "⚡ High performance + no sleep applied."
+          Write-Host "⚡ High Performance applied."
 
-      # --- Install MuMu Player ------------------------------------------------
-      - name: Download & Install MuMuPlayer (official)
+      # --- RDP codec prefer (H.264/AVC444) -----------------------------------
+      - name: Prefer RDP AVC/H.264 (if client supports)
         shell: pwsh
         run: |
-          function Get-LatestMuMuUrl {
-            param([string]$OverrideUrl)
+          $k="HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
+          if (-not (Test-Path $k)) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT" -Name "Terminal Services" -Force | Out-Null }
+          New-ItemProperty -Path $k -Name "AVC444ModePreferred" -PropertyType DWord -Value 1 -Force | Out-Null
+          New-ItemProperty -Path $k -Name "UseAVCCodecForRDP" -PropertyType DWord -Value 1 -Force | Out-Null
+          New-ItemProperty -Path $k -Name "PreferHardwareEncoding" -PropertyType DWord -Value 1 -Force | Out-Null
+          Write-Host "🎬 RDP AVC preference set."
 
-            if ($OverrideUrl -and $OverrideUrl.Trim().Length -gt 0) { return $OverrideUrl }
-
-            # scrape link .exe dari halaman resmi download
-            $page = Invoke-WebRequest -Uri "https://www.mumuplayer.com/download/" -UseBasicParsing
-            $exeLinks = @()
-            if ($page.Links) {
-              $exeLinks = $page.Links | Where-Object { $_.href -match "\.exe$" } | Select-Object -ExpandProperty href
-            }
-            if (-not $exeLinks -or $exeLinks.Count -eq 0) {
-              Write-Error "Tidak menemukan link .exe di halaman MuMu."
-              return $null
-            }
-            # ambil link pertama (biasanya 'Download for Windows')
-            return $exeLinks[0]
+      # --- Install MuMu (resolver multi-sumber) -------------------------------
+      - name: Download & Install MuMu Player
+        shell: pwsh
+        run: |
+          function Test-Url200 { param([string]$u)
+            try {
+              if (-not $u) { return $false }
+              $resp = Invoke-WebRequest -Uri $u -Method Head -UseBasicParsing -TimeoutSec 30
+              return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400)
+            } catch { return $false }
           }
 
-          $dl = Get-LatestMuMuUrl -OverrideUrl $env:MUMU_DIRECT_URL
-          if (-not $dl) { Write-Error "❌ MuMu URL not found"; exit 1 }
+          function Get-MuMuUrl {
+            param([string]$Override)
 
-          if ($dl -notmatch "^https?://") {
-            # kalau href relatif, gabungkan dengan host
-            $dl = [System.Uri]::new([System.Uri] "https://www.mumuplayer.com", $dl).AbsoluteUri
+            # 0) Kalau ada URL override, pakai itu
+            if ($Override -and $Override.Trim().Length -gt 0) { return $Override }
+
+            # 1) Coba scrape halaman download resmi untuk .exe yang kelihatan (kadang statis)
+            try {
+              $page = Invoke-WebRequest -Uri "https://www.mumuplayer.com/download/" -UseBasicParsing -TimeoutSec 30
+              if ($page -and $page.RawContent) {
+                $m = [regex]::Matches($page.RawContent, 'https?://[^"\\s]+?\\.exe', 'IgnoreCase')
+                foreach ($x in $m) {
+                  if (Test-Url200 $x.Value) { return $x.Value }
+                }
+              }
+            } catch {}
+
+            # 2) Coba halaman "is downloading" (kadang ada link langsung di HTML)
+            try {
+              $page2 = Invoke-WebRequest -Uri "https://www.mumuplayer.com/installation/index.html" -UseBasicParsing -TimeoutSec 30
+              if ($page2 -and $page2.RawContent) {
+                $m2 = [regex]::Matches($page2.RawContent, 'https?://[^"\\s]+?\\.exe', 'IgnoreCase')
+                foreach ($x in $m2) {
+                  if (Test-Url200 $x.Value) { return $x.Value }
+                }
+              }
+            } catch {}
+
+            # 3) Daftar pola CDN resmi NetEase yang sering dipakai (dari update post resmi)
+            $candidates = @(
+              # Rilis “MuMu Player 12” jalur installer global
+              "https://a11.gdl.netease.com/MuMuInstaller_3.1.7.0_overseas-v4.1.32.exe",
+              "https://a11.gdl.netease.com/MuMuInstaller_3.1.6.0_overseas-v3.7.7.2550_all_1704941759.exe",
+              # Jalur “MuMuNG-setup” (naming lain yang dipakai NetEase)
+              "https://a11.gdl.netease.com/MuMuNG-setup-V4.1.32.3729-overseas-0617102718.exe"
+            )
+            foreach ($u in $candidates) {
+              if (Test-Url200 $u) { return $u }
+            }
+
+            # 4) Fallback mirror tepercaya (pakai kalau resmi tidak bisa diakses)
+            $mirrors = @(
+              "https://www.filehorse.com/download-mumu/download/",       # FileHorse
+              "https://mumu-player.en.uptodown.com/windows/download"     # Uptodown
+            )
+            foreach ($m in $mirrors) {
+              try {
+                $p = Invoke-WebRequest -Uri $m -UseBasicParsing -TimeoutSec 30
+                $mm = [regex]::Matches($p.RawContent, 'https?://[^"\\s]+?\\.exe', 'IgnoreCase')
+                foreach ($x in $mm) { if (Test-Url200 $x.Value) { return $x.Value } }
+              } catch {}
+            }
+
+            return $null
           }
+
+          $url = Get-MuMuUrl -Override $env:MUMU_DIRECT_URL
+          if (-not $url) { Write-Error "❌ Gagal menemukan URL installer MuMu (.exe). Isi env MUMU_DIRECT_URL untuk override."; exit 1 }
+          Write-Host "⬇️  Downloading MuMu from:`n$url"
 
           $inst = Join-Path $env:TEMP "mumu_setup.exe"
-          Write-Host "⬇️  Downloading MuMu from: $dl"
-          Invoke-WebRequest -Uri $dl -OutFile $inst -UseBasicParsing
+          Invoke-WebRequest -Uri $url -OutFile $inst -UseBasicParsing -TimeoutSec 600
 
-          # coba mode silent umum
+          # Coba silent flags umum; kalau gagal, run biasa
           $silentArgs = @("/S","/silent","/verysilent","/quiet","/qn")
-          $installed = $false
+          $ok = $false
           foreach ($arg in $silentArgs) {
             Write-Host "Installing MuMu (try $arg)..."
             try {
@@ -204,52 +166,47 @@ jobs:
               Start-Sleep -Seconds 5
               if (Test-Path "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe" -or
                   Test-Path "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe" -or
-                  Test-Path "C:\Program Files\Netease\MuMu\emulator\MuMu.exe") {
-                $installed = $true; break
-              }
-            } catch { }
+                  Test-Path "C:\Program Files\Netease\MuMu\emulator\MuMu.exe") { $ok = $true; break }
+            } catch {}
           }
-
-          if (-not $installed) {
-            Write-Host "Silent install belum berhasil. Menjalankan installer normal (best-effort)..."
+          if (-not $ok) {
+            Write-Host "Silent install belum jalan, jalankan installer normal..."
             Start-Process -FilePath $inst -Wait -NoNewWindow
           }
 
-          # deteksi lokasi install
+          # Deteksi path
           $MuMuExe = $null
-          $paths = @(
+          foreach ($p in @(
             "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe",
             "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe",
             "C:\Program Files\Netease\MuMu\emulator\MuMu.exe"
-          )
-          foreach ($p in $paths) { if (Test-Path $p) { $MuMuExe = $p; break } }
+          )) { if (Test-Path $p) { $MuMuExe = $p; break } }
 
           if ($MuMuExe) {
             "MUMU_EXE=$MuMuExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
             Write-Host "✅ MuMu installed at: $MuMuExe"
           } else {
-            Write-Warning "⚠️  MuMu tidak terdeteksi. Lanjut manual setelah RDP masuk."
+            Write-Warning "⚠️  MuMu belum terdeteksi; cek via RDP, installer mungkin butuh klik manual."
           }
 
-          # bersih-bersih installer
           Remove-Item $inst -Force -ErrorAction SilentlyContinue
 
       # --- Info koneksi -------------------------------------------------------
-      - name: Show RDP info
+      - name: Show Access Info
         shell: pwsh
         run: |
-          Write-Host "`n=== RDP CONNECTION ==="
+          Write-Host "`n=== RDP ACCESS INFO ==="
           Write-Host "Address : $env:TAILSCALE_IP"
           Write-Host "Username: Yanzz"
           Write-Host "Password: Evan123456"
           Write-Host "MuMu   : $env:MUMU_EXE"
-          Write-Host "================================`n"
+          Write-Host "=========================`n"
 
-      # --- Keep alive (6 jam) -------------------------------------------------
-      - name: Keep Alive (AFK)
+      # --- Keep alive (60 jam) ------------------------------------------------
+      - name: Keep Alive
         shell: pwsh
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP active | IP: $env:TAILSCALE_IP"
-            Start-Sleep -Seconds 120
+            Write-Host "[$(Get-Date -Format o)] 🟢 RDP running | IP: $env:TAILSCALE_IP"
+            Start-Sleep -Seconds 300
           }
