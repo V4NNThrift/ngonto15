@@ -1,27 +1,29 @@
-name: Yanzz RDP (Performance Max + IP Access)
+name: Yanzz RDP (Windows 2019 + MuMu)
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
-    runs-on: windows-2022
-    timeout-minutes: 3600
+  rdp-mumu:
+    runs-on: windows-2019
+    timeout-minutes: 360  # 6 jam, sesuai request
 
     env:
       TAILSCALE_VERSION: "1.82.0"
+      # kalau mau kunci ke URL installer tertentu, isi ini. kalau kosong, script akan scrape dari halaman resmi.
+      MUMU_DIRECT_URL: ""
 
     steps:
-      - name: Enable RDP + Firewall
+      # --- RDP dasar + user ---------------------------------------------------
+      - name: Enable RDP + open firewall
         shell: pwsh
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                           -Name "fDenyTSConnections" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389 | Out-Null
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP-3389" dir=in action=allow protocol=TCP localport=3389 | Out-Null
           Restart-Service -Name TermService -Force
-          Write-Host "✅ RDP enabled and firewall opened."
+          Write-Host "✅ RDP enabled + firewall opened."
 
-      - name: Create RDP User
+      - name: Create RDP user
         shell: pwsh
         run: |
           $user = "Yanzz"
@@ -31,8 +33,9 @@ jobs:
           }
           Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
-          Write-Host "✅ User $user created & added to RDP/Admin groups."
+          Write-Host "✅ User $user siap RDP."
 
+      # --- Tailscale untuk IP RDP --------------------------------------------
       - name: Install Tailscale
         shell: pwsh
         run: |
@@ -48,21 +51,16 @@ jobs:
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          if (-not $env:TS_KEY) {
-            Write-Error "❌ Missing secrets.TAILSCALE_AUTH_KEY"
-            exit 1
-          }
+          if (-not $env:TS_KEY) { Write-Error "❌ secrets.TAILSCALE_AUTH_KEY not set"; exit 1 }
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
-          Start-Sleep -Seconds 10
+          Start-Sleep -Seconds 8
           $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
-          if (-not $ip) {
-            Write-Error "❌ No Tailscale IP assigned."
-            exit 1
-          }
+          if (-not $ip) { Write-Error "❌ No Tailscale IP"; exit 1 }
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-          Write-Host "🌐 Tailscale connected. IP: $ip"
+          Write-Host "🌐 Tailscale IP: $ip"
 
-      - name: Boost Power Plan (High Performance)
+      # --- Performance ringan (tanpa tweak berat) ----------------------------
+      - name: High performance power plan + no sleep
         shell: pwsh
         run: |
           powercfg /setactive SCHEME_MIN
@@ -70,51 +68,99 @@ jobs:
           powercfg -change -disk-timeout-ac 0
           powercfg -change -standby-timeout-ac 0
           powercfg -change -hibernate-timeout-ac 0
-          Write-Host "⚡ High performance mode enabled."
+          Write-Host "⚡ High performance + no sleep applied."
 
-      - name: Optimize Windows Visuals & Services
+      # --- Install MuMu Player ------------------------------------------------
+      - name: Download & Install MuMuPlayer (official)
         shell: pwsh
         run: |
-          Write-Host "🔧 Disabling unneeded services..."
-          $svcs = @("SysMain","WSearch","DiagTrack","PrintSpooler","Themes")
-          foreach ($svc in $svcs) {
-            if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
-              Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-              Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
-              Write-Host "⛔ Disabled: $svc"
+          function Get-LatestMuMuUrl {
+            param([string]$OverrideUrl)
+
+            if ($OverrideUrl -and $OverrideUrl.Trim().Length -gt 0) { return $OverrideUrl }
+
+            # scrape link .exe dari halaman resmi download
+            $page = Invoke-WebRequest -Uri "https://www.mumuplayer.com/download/" -UseBasicParsing
+            $exeLinks = @()
+            if ($page.Links) {
+              $exeLinks = $page.Links | Where-Object { $_.href -match "\.exe$" } | Select-Object -ExpandProperty href
             }
+            if (-not $exeLinks -or $exeLinks.Count -eq 0) {
+              Write-Error "Tidak menemukan link .exe di halaman MuMu."
+              return $null
+            }
+            # ambil link pertama (biasanya 'Download for Windows')
+            return $exeLinks[0]
           }
 
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
-          reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 26 /f
-          reg add "HKCU\Control Panel\Desktop" /v MenuShowDelay /t REG_SZ /d 0 /f
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableMenuAnims /t REG_DWORD /d 1 /f
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fDisableWallpaper /t REG_DWORD /d 1 /f
+          $dl = Get-LatestMuMuUrl -OverrideUrl $env:MUMU_DIRECT_URL
+          if (-not $dl) { Write-Error "❌ MuMu URL not found"; exit 1 }
 
-          Write-Host "🎯 Performance visuals applied."
+          if ($dl -notmatch "^https?://") {
+            # kalau href relatif, gabungkan dengan host
+            $dl = [System.Uri]::new([System.Uri] "https://www.mumuplayer.com", $dl).AbsoluteUri
+          }
 
-      - name: Network & TCP Optimization
+          $inst = Join-Path $env:TEMP "mumu_setup.exe"
+          Write-Host "⬇️  Downloading MuMu from: $dl"
+          Invoke-WebRequest -Uri $dl -OutFile $inst -UseBasicParsing
+
+          # coba mode silent umum
+          $silentArgs = @("/S","/silent","/verysilent","/quiet","/qn")
+          $installed = $false
+          foreach ($arg in $silentArgs) {
+            Write-Host "Installing MuMu (try $arg)..."
+            try {
+              Start-Process -FilePath $inst -ArgumentList $arg -Wait -NoNewWindow
+              Start-Sleep -Seconds 5
+              if (Test-Path "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe" -or
+                  Test-Path "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe" -or
+                  Test-Path "C:\Program Files\Netease\MuMu\emulator\MuMu.exe") {
+                $installed = $true; break
+              }
+            } catch { }
+          }
+
+          if (-not $installed) {
+            Write-Host "Silent install belum berhasil. Menjalankan installer normal (best-effort)..."
+            Start-Process -FilePath $inst -Wait -NoNewWindow
+          }
+
+          # deteksi lokasi install
+          $MuMuExe = $null
+          $paths = @(
+            "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe",
+            "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe",
+            "C:\Program Files\Netease\MuMu\emulator\MuMu.exe"
+          )
+          foreach ($p in $paths) { if (Test-Path $p) { $MuMuExe = $p; break } }
+
+          if ($MuMuExe) {
+            "MUMU_EXE=$MuMuExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
+            Write-Host "✅ MuMu installed at: $MuMuExe"
+          } else {
+            Write-Warning "⚠️  MuMu tidak terdeteksi. Lanjut manual setelah RDP masuk."
+          }
+
+          # bersih-bersih installer
+          Remove-Item $inst -Force -ErrorAction SilentlyContinue
+
+      # --- Info koneksi -------------------------------------------------------
+      - name: Show RDP info
         shell: pwsh
         run: |
-          Write-Host "🌐 Network optimizations..."
-          netsh int tcp set global autotuninglevel=high
-          netsh int tcp set global congestionprovider=ctcp
-          netsh int tcp set global ecncapability=enabled
-          netsh int tcp set global chimney=disabled
+          Write-Host "`n=== RDP CONNECTION ==="
+          Write-Host "Address : $env:TAILSCALE_IP"
+          Write-Host "Username: Yanzz"
+          Write-Host "Password: Evan123456"
+          Write-Host "MuMu   : $env:MUMU_EXE"
+          Write-Host "================================`n"
 
-      - name: Show RDP Connection Info
-        shell: pwsh
-        run: |
-          Write-Host "`n=== RDP CONNECTION INFO ==="
-          Write-Host "🔹 Address : $env:TAILSCALE_IP"
-          Write-Host "🔹 Username: Yanzz"
-          Write-Host "🔹 Password: Evan123456"
-          Write-Host "============================`n"
-
-      - name: Keep Alive (AFK Mode)
+      # --- Keep alive (6 jam) -------------------------------------------------
+      - name: Keep Alive (AFK)
         shell: pwsh
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP Active | IP: $env:TAILSCALE_IP"
-            Start-Sleep -Seconds 300
+            Write-Host "[$(Get-Date -Format o)] 🟢 RDP active | IP: $env:TAILSCALE_IP"
+            Start-Sleep -Seconds 120
           }
