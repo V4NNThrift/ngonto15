@@ -91,56 +91,59 @@ jobs:
           if (-not $ok) { Write-Error "TCP 3389 test failed"; exit 1 }
           Write-Host "TCP connectivity successful!"
 
-      # === SOFTWARE SECTION (WinRAR, Roblox, deps) ===
-      - name: Install dependencies (VC++ runtime, WebView2)
+      # === SOFTWARE SECTION (pakai Chocolatey, no winget) ===
+      - name: Ensure Chocolatey available (should be preinstalled on runner)
         shell: powershell
         run: |
-          # Runner biasanya punya Chocolatey; kalau ada, pakai untuk VC++ 2015-2022
           try {
             choco --version
-            choco install vcredist140 -y --no-progress
-          } catch { Write-Host "Chocolatey not available or failed, skipping VC++ via choco." }
-          # WebView2 (beberapa app modern pakai ini)
-          try {
-            winget --version
-            winget install -e --id Microsoft.EdgeWebView2Runtime --silent --accept-package-agreements --accept-source-agreements
-          } catch { Write-Host "winget not available or WebView2 install failed (ok to skip)." }
+          } catch {
+            Write-Error "Chocolatey not available; this image should have it. Aborting."
+            exit 1
+          }
 
-      - name: Install WinRAR (winget)
+      - name: Install software (WinRAR, VC++ runtime, Bloxstrap)
         shell: powershell
         run: |
-          winget install -e --id RARLab.WinRAR --silent --accept-package-agreements --accept-source-agreements
+          choco install winrar -y --no-progress
+          choco install vcredist140 -y --no-progress
+          choco install bloxstrap -y --no-progress
+          # (opsional) WebView2 runtime via choco, jika diperlukan oleh app lain
+          choco install microsoft-edge-webview2-runtime -y --no-progress
 
-      - name: Install Bloxstrap (recommended Roblox bootstrapper)
+      - name: Initialize Bloxstrap (quiet)
         shell: powershell
+        continue-on-error: true
         run: |
-          # Bloxstrap helps manage Roblox client; tends to auto-fetch proper Roblox binaries
-          winget install -e --id pizzaboxer.Bloxstrap --silent --accept-package-agreements --accept-source-agreements
-          # First run to initialize (non-blocking); ignore exit if GUI can't show
-          $bx = "$env:LOCALAPPDATA\Bloxstrap\Bloxstrap.exe"
-          if (Test-Path $bx) {
+          $bxUser = "$env:LOCALAPPDATA\Bloxstrap\Bloxstrap.exe"
+          $bxMachine = "C:\Program Files\Bloxstrap\Bloxstrap.exe"
+          $bx = if (Test-Path $bxUser) { $bxUser } elseif (Test-Path $bxMachine) { $bxMachine } else { $null }
+          if ($bx) {
             Start-Process -FilePath $bx -ArgumentList "--quiet" -WindowStyle Hidden
             Start-Sleep -Seconds 10
           } else {
-            Write-Host "Bloxstrap path not found (winget may have installed per-machine)."
+            Write-Host "Bloxstrap executable not found (yet)."
           }
 
       - name: Attempt direct Roblox install (fallback)
         shell: powershell
         continue-on-error: true
         run: |
-          # Fallback ke installer resmi jika perlu
           $rbx = "$env:TEMP\RobloxPlayerInstaller.exe"
-          Invoke-WebRequest -Uri "https://setup.rbxcdn.com/RobloxPlayerInstaller.exe" -OutFile $rbx
-          # Roblox installer gak dokumentasi switch silent yang stabil; coba run biasa (non-interaktif kadang tetap jalan)
-          Start-Process -FilePath $rbx -ArgumentList "" -WindowStyle Hidden -Wait
-          Remove-Item $rbx -Force -ErrorAction SilentlyContinue
+          try {
+            Invoke-WebRequest -Uri "https://setup.rbxcdn.com/RobloxPlayerInstaller.exe" -OutFile $rbx
+            Start-Process -FilePath $rbx -ArgumentList "" -WindowStyle Hidden -Wait
+          } catch {
+            Write-Host "Roblox fallback install failed: $($_.Exception.Message)"
+          } finally {
+            Remove-Item $rbx -Force -ErrorAction SilentlyContinue
+          }
 
-      - name: (Optional) Install Mesa3D software OpenGL (for old OpenGL apps)
+      - name: (Optional) Install Mesa3D software OpenGL (untuk app OpenGL lawas)
         shell: powershell
         continue-on-error: true
         run: |
-          # Ini buat aplikasi OpenGL yg butuh "GPU" software. Roblox pakai D3D jadi ini opsional.
+          # Roblox biasanya pakai Direct3D; ini opsional buat aplikasi OpenGL.
           $releasesApi = "https://api.github.com/repos/pal1000/mesa-dist-win/releases/latest"
           $zip = "$env:TEMP\mesa.zip"
           $dst = "C:\mesa-dist-win"
@@ -152,9 +155,9 @@ jobs:
               if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
               Expand-Archive -Path $zip -DestinationPath $dst
               Remove-Item $zip -Force
-              # Salin opengl32.dll ke folder apps tertentu sesuai kebutuhan (contoh ke Notepad++ jika ada)
+              # Untuk memakai Mesa pada app tertentu, copy-kan opengl32.dll ke folder app tsb.
               # Contoh:
-              # $appDir = "C:\Program Files\Notepad++"
+              # $appDir = "C:\SomeApp"
               # if (Test-Path $appDir) { Copy-Item "$dst\mesa\opengl32.dll" "$appDir\" -Force }
             }
           } catch {
