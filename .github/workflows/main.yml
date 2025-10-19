@@ -8,12 +8,19 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 3600
 
+    env:
+      # Jika mau ganti versi WinRAR atau pakai URL lain, ubah di sini
+      WINRAR_URL: "https://www.rarlab.com/rar/winrar-x64-6.22.exe"
+      TAILSCALE_VERSION: "1.82.0"
+
     steps:
       - name: Print Windows version
+        shell: pwsh
         run: |
           systeminfo | findstr /B /C:"OS Name" /C:"OS Version"
 
       - name: Configure Core RDP Settings
+        shell: pwsh
         run: |
           # Enable Remote Desktop and (if needed) disable NLA
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
@@ -31,6 +38,7 @@ jobs:
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with specific password
+        shell: pwsh
         run: |
           # WARNING: Hardcoding passwords in workflows is insecure.
           $plain = "Evan123456"
@@ -55,8 +63,9 @@ jobs:
           }
 
       - name: Install Tailscale
+        shell: pwsh
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
 
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
@@ -64,6 +73,7 @@ jobs:
           Remove-Item $installerPath -Force
 
       - name: Establish Tailscale Connection
+        shell: pwsh
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
@@ -91,6 +101,7 @@ jobs:
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
       - name: Verify RDP Accessibility (TCP 3389)
+        shell: pwsh
         run: |
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
@@ -100,7 +111,23 @@ jobs:
           }
           Write-Host "TCP connectivity successful!"
 
+      - name: Install WinRAR (silent)
+        shell: pwsh
+        run: |
+          if (-not $env:WINRAR_URL) {
+            Write-Error "WINRAR_URL not set"
+            exit 1
+          }
+          $installer = Join-Path $env:TEMP "winrar_inst.exe"
+          Write-Host "Downloading WinRAR from $env:WINRAR_URL"
+          Invoke-WebRequest -Uri $env:WINRAR_URL -OutFile $installer -UseBasicParsing
+          # WinRAR installer supports /S for silent install
+          Write-Host "Installing WinRAR (silent)"
+          Start-Process -FilePath $installer -ArgumentList "/S" -Wait
+          Remove-Item $installer -Force
+
       - name: Show Access Info (no password in logs)
+        shell: pwsh
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address : $env:TAILSCALE_IP"
@@ -109,6 +136,7 @@ jobs:
           Write-Host "==================`n"
 
       - name: Maintain Connection
+        shell: pwsh
         run: |
           while ($true) {
             Write-Host "[$(Get-Date -Format o)] RDP active. Stop the job to terminate."
