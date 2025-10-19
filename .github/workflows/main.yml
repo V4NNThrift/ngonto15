@@ -1,27 +1,26 @@
-name: Yanzz RDP (Win2022 + MuMu, 60h)
+name: Yanzz RDP (Win 2022 • Naruto Wallpaper • 60h)
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp-mumu:
+  rdp-naruto:
     runs-on: windows-2022
     timeout-minutes: 3600
 
     env:
       TAILSCALE_VERSION: "1.82.0"
-      # Opsional: isi manual bila sudah punya direct .exe
-      MUMU_DIRECT_URL: ""
 
     steps:
-      # --- RDP & user ---------------------------------------------------------
-      - name: Enable RDP & open firewall
+      - name: Enable RDP & firewall
         shell: pwsh
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP-3389" dir=in action=allow protocol=TCP localport=3389 | Out-Null
-          Restart-Service -Name TermService -Force
-          Write-Host "✅ RDP enabled & firewall opened."
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                           -Name "fDenyTSConnections" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP-3389-TCP" dir=in action=allow protocol=TCP localport=3389 | Out-Null
+          netsh advfirewall firewall add rule name="RDP-3389-UDP" dir=in action=allow protocol=UDP localport=3389 | Out-Null
+          Restart-Service TermService -Force
+          Write-Host "✅ RDP enabled."
 
       - name: Create RDP user
         shell: pwsh
@@ -33,34 +32,31 @@ jobs:
           }
           Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
-          Write-Host "✅ User $user ready."
+          Write-Host "✅ User $user created."
 
-      # --- Tailscale (IP) -----------------------------------------------------
       - name: Install Tailscale
         shell: pwsh
         run: |
           $url = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
-          $file = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $url -OutFile $file
-          Start-Process msiexec.exe -ArgumentList "/i `"$file`" /quiet /norestart" -Wait
-          Remove-Item $file -Force
+          $path = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $url -OutFile $path
+          Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
+          Remove-Item $path -Force
           Write-Host "✅ Tailscale installed."
 
-      - name: Connect to Tailscale
+      - name: Connect Tailscale
         shell: pwsh
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          if (-not $env:TS_KEY) { Write-Error "❌ secrets.TAILSCALE_AUTH_KEY not set."; exit 1 }
+          if (-not $env:TS_KEY) { Write-Error "❌ No Tailscale key."; exit 1 }
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
           Start-Sleep -Seconds 10
           $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
-          if (-not $ip) { Write-Error "❌ No Tailscale IP found."; exit 1 }
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-          Write-Host "🌐 Tailscale IP: $ip"
+          Write-Host "🌐 Connected to Tailscale: $ip"
 
-      # --- Performance ringan -------------------------------------------------
-      - name: High Performance power plan (no sleep)
+      - name: Boost Performance
         shell: pwsh
         run: |
           powercfg /setactive SCHEME_MIN
@@ -68,130 +64,34 @@ jobs:
           powercfg -change -disk-timeout-ac 0
           powercfg -change -standby-timeout-ac 0
           powercfg -change -hibernate-timeout-ac 0
-          Write-Host "⚡ High Performance applied."
+          Write-Host "⚡ Performance mode applied."
 
-      # --- RDP codec prefer (H.264/AVC444) -----------------------------------
-      - name: Prefer RDP AVC/H.264 (if client supports)
+      - name: Set Naruto Wallpaper (auto random)
         shell: pwsh
         run: |
-          $k="HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services"
-          if (-not (Test-Path $k)) { New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT" -Name "Terminal Services" -Force | Out-Null }
-          New-ItemProperty -Path $k -Name "AVC444ModePreferred" -PropertyType DWord -Value 1 -Force | Out-Null
-          New-ItemProperty -Path $k -Name "UseAVCCodecForRDP" -PropertyType DWord -Value 1 -Force | Out-Null
-          New-ItemProperty -Path $k -Name "PreferHardwareEncoding" -PropertyType DWord -Value 1 -Force | Out-Null
-          Write-Host "🎬 RDP AVC preference set."
+          $dir = "C:\Wallpapers"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $urls = @(
+            "https://images8.alphacoders.com/130/1309570.jpg",
+            "https://images6.alphacoders.com/103/1039579.jpg",
+            "https://images2.alphacoders.com/129/1296428.jpg",
+            "https://images8.alphacoders.com/130/1301521.jpg",
+            "https://wallpapers.com/images/high/naruto-sage-mode-4k-hd-7hfccxtr5o7v3duj.webp",
+            "https://i.pinimg.com/originals/f0/9e/24/f09e24b989ee27f2b5b74052b9f2ad85.jpg"
+          )
+          $url = $urls | Get-Random
+          $file = Join-Path $dir "naruto_wallpaper.jpg"
+          Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
+          Write-Host "🖼️  Downloaded wallpaper from $url"
 
-      # --- Install MuMu (resolver multi-sumber) -------------------------------
-      - name: Download & Install MuMu Player
-        shell: pwsh
-        run: |
-          function Test-Url200 { param([string]$u)
-            try {
-              if (-not $u) { return $false }
-              $resp = Invoke-WebRequest -Uri $u -Method Head -UseBasicParsing -TimeoutSec 30
-              return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400)
-            } catch { return $false }
-          }
+          $reg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+          if (-not (Test-Path $reg)) { New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies" -Name "System" | Out-Null }
+          New-ItemProperty -Path $reg -Name "Wallpaper" -Value $file -PropertyType String -Force | Out-Null
+          New-ItemProperty -Path $reg -Name "WallpaperStyle" -Value "2" -PropertyType String -Force | Out-Null
+          New-ItemProperty -Path $reg -Name "TileWallpaper" -Value "0" -PropertyType String -Force | Out-Null
+          gpupdate /target:computer /force | Out-Null
+          Write-Host "✅ Naruto wallpaper applied globally."
 
-          function Get-MuMuUrl {
-            param([string]$Override)
-
-            # 0) Kalau ada URL override, pakai itu
-            if ($Override -and $Override.Trim().Length -gt 0) { return $Override }
-
-            # 1) Coba scrape halaman download resmi untuk .exe yang kelihatan (kadang statis)
-            try {
-              $page = Invoke-WebRequest -Uri "https://www.mumuplayer.com/download/" -UseBasicParsing -TimeoutSec 30
-              if ($page -and $page.RawContent) {
-                $m = [regex]::Matches($page.RawContent, 'https?://[^"\\s]+?\\.exe', 'IgnoreCase')
-                foreach ($x in $m) {
-                  if (Test-Url200 $x.Value) { return $x.Value }
-                }
-              }
-            } catch {}
-
-            # 2) Coba halaman "is downloading" (kadang ada link langsung di HTML)
-            try {
-              $page2 = Invoke-WebRequest -Uri "https://www.mumuplayer.com/installation/index.html" -UseBasicParsing -TimeoutSec 30
-              if ($page2 -and $page2.RawContent) {
-                $m2 = [regex]::Matches($page2.RawContent, 'https?://[^"\\s]+?\\.exe', 'IgnoreCase')
-                foreach ($x in $m2) {
-                  if (Test-Url200 $x.Value) { return $x.Value }
-                }
-              }
-            } catch {}
-
-            # 3) Daftar pola CDN resmi NetEase yang sering dipakai (dari update post resmi)
-            $candidates = @(
-              # Rilis “MuMu Player 12” jalur installer global
-              "https://a11.gdl.netease.com/MuMuInstaller_3.1.7.0_overseas-v4.1.32.exe",
-              "https://a11.gdl.netease.com/MuMuInstaller_3.1.6.0_overseas-v3.7.7.2550_all_1704941759.exe",
-              # Jalur “MuMuNG-setup” (naming lain yang dipakai NetEase)
-              "https://a11.gdl.netease.com/MuMuNG-setup-V4.1.32.3729-overseas-0617102718.exe"
-            )
-            foreach ($u in $candidates) {
-              if (Test-Url200 $u) { return $u }
-            }
-
-            # 4) Fallback mirror tepercaya (pakai kalau resmi tidak bisa diakses)
-            $mirrors = @(
-              "https://www.filehorse.com/download-mumu/download/",       # FileHorse
-              "https://mumu-player.en.uptodown.com/windows/download"     # Uptodown
-            )
-            foreach ($m in $mirrors) {
-              try {
-                $p = Invoke-WebRequest -Uri $m -UseBasicParsing -TimeoutSec 30
-                $mm = [regex]::Matches($p.RawContent, 'https?://[^"\\s]+?\\.exe', 'IgnoreCase')
-                foreach ($x in $mm) { if (Test-Url200 $x.Value) { return $x.Value } }
-              } catch {}
-            }
-
-            return $null
-          }
-
-          $url = Get-MuMuUrl -Override $env:MUMU_DIRECT_URL
-          if (-not $url) { Write-Error "❌ Gagal menemukan URL installer MuMu (.exe). Isi env MUMU_DIRECT_URL untuk override."; exit 1 }
-          Write-Host "⬇️  Downloading MuMu from:`n$url"
-
-          $inst = Join-Path $env:TEMP "mumu_setup.exe"
-          Invoke-WebRequest -Uri $url -OutFile $inst -UseBasicParsing -TimeoutSec 600
-
-          # Coba silent flags umum; kalau gagal, run biasa
-          $silentArgs = @("/S","/silent","/verysilent","/quiet","/qn")
-          $ok = $false
-          foreach ($arg in $silentArgs) {
-            Write-Host "Installing MuMu (try $arg)..."
-            try {
-              Start-Process -FilePath $inst -ArgumentList $arg -Wait -NoNewWindow
-              Start-Sleep -Seconds 5
-              if (Test-Path "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe" -or
-                  Test-Path "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe" -or
-                  Test-Path "C:\Program Files\Netease\MuMu\emulator\MuMu.exe") { $ok = $true; break }
-            } catch {}
-          }
-          if (-not $ok) {
-            Write-Host "Silent install belum jalan, jalankan installer normal..."
-            Start-Process -FilePath $inst -Wait -NoNewWindow
-          }
-
-          # Deteksi path
-          $MuMuExe = $null
-          foreach ($p in @(
-            "C:\Program Files\MuMu\MuMuPlayer-12\MuMuPlayer.exe",
-            "C:\Program Files\MuMu\MuMuPlayer\MuMu.exe",
-            "C:\Program Files\Netease\MuMu\emulator\MuMu.exe"
-          )) { if (Test-Path $p) { $MuMuExe = $p; break } }
-
-          if ($MuMuExe) {
-            "MUMU_EXE=$MuMuExe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding ascii
-            Write-Host "✅ MuMu installed at: $MuMuExe"
-          } else {
-            Write-Warning "⚠️  MuMu belum terdeteksi; cek via RDP, installer mungkin butuh klik manual."
-          }
-
-          Remove-Item $inst -Force -ErrorAction SilentlyContinue
-
-      # --- Info koneksi -------------------------------------------------------
       - name: Show Access Info
         shell: pwsh
         run: |
@@ -199,14 +99,12 @@ jobs:
           Write-Host "Address : $env:TAILSCALE_IP"
           Write-Host "Username: Yanzz"
           Write-Host "Password: Evan123456"
-          Write-Host "MuMu   : $env:MUMU_EXE"
           Write-Host "=========================`n"
 
-      # --- Keep alive (60 jam) ------------------------------------------------
-      - name: Keep Alive
+      - name: Keep Alive (60h)
         shell: pwsh
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP running | IP: $env:TAILSCALE_IP"
+            Write-Host "[$(Get-Date -Format o)] 🟢 RDP active | Naruto wallpaper"
             Start-Sleep -Seconds 300
           }
