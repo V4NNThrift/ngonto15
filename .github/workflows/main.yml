@@ -1,4 +1,4 @@
-name: Yanzz RDP (Choco - Mesa & WinRAR)
+name: Yanzz RDP (Choco - Mesa & WinRAR Fixed)
 
 on:
   workflow_dispatch:
@@ -15,48 +15,31 @@ jobs:
 
       - name: Configure Core RDP Settings
         run: |
-          # Enable Remote Desktop and disable NLA for easier connection
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-            -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-            -Name "SecurityLayer" -Value 0 -Force
-          
-          # Open firewall for RDP (TCP/3389)
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
           netsh advfirewall firewall add rule name="Allow RDP" dir=in action=allow protocol=TCP localport=3389
-
-          # Restart the Remote Desktop service to apply changes
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User with specific password
         run: |
-          # WARNING: Hardcoding passwords in workflows is insecure.
           $plain = "Evan123456"
           $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
-          
-          # Create or update local user
-          $existing = Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue
-          if ($null -eq $existing) {
+          if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
             New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires | Out-Null
           } else {
             Set-LocalUser -Name "Yanzz" -Password $securePass
           }
-          
-          # Add user to Administrators and Remote Desktop Users groups
           Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
 
       - name: ✨ Install Software with Chocolatey (Mesa, WinRAR)
         run: |
-          # Install Chocolatey
-          Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-          
-          # Install Mesa3D for software-based graphics. Pinning version for stability.
-          choco install mesa --version=24.1.1 -y
+          # Install Mesa3D using the latest stable version available
+          choco install mesa -y
           
           # Copy the necessary DLLs to System32 to enable system-wide OpenGL support
-          # This path is stable because we pinned the version above.
+          Write-Host "Copying Mesa DLLs to System32..."
           Copy-Item -Path "C:\ProgramData\chocolatey\lib\mesa\tools\x64\opengl32.dll" -Destination "C:\Windows\System32\" -Force
           Copy-Item -Path "C:\ProgramData\chocolatey\lib\mesa\tools\x64\libgallium_wgl.dll" -Destination "C:\Windows\System32\" -Force
           Copy-Item -Path "C:\ProgramData\chocolatey\lib\mesa\tools\x64\libglapi.dll" -Destination "C:\Windows\System32\" -Force
@@ -68,11 +51,7 @@ jobs:
 
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.72.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          choco install tailscale -y
 
       - name: Establish Tailscale Connection
         env:
@@ -82,18 +61,13 @@ jobs:
             Write-Error "secrets.TAILSCALE_AUTH_KEY is not set."
             exit 1
           }
-          
-          # Bring up Tailscale
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey="$env:TS_KEY" --hostname="gh-runner-$env:GITHUB_RUN_ID"
-          
-          # Wait for Tailscale to assign an IPv4 address
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 12) {
             $tsIP = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
             if (-not $tsIP) { Start-Sleep -Seconds 5; $retries++ }
           }
-          
           if (-not $tsIP) {
             Write-Error "Tailscale IP not assigned. Exiting."
             exit 1
