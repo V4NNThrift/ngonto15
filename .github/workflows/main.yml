@@ -5,7 +5,8 @@ on:
 
 jobs:
   secure-rdp:
-    runs-on: windows-latest
+    # ganti ke Windows Server 2019 runner
+    runs-on: windows-2019
     timeout-minutes: 3600
 
     steps:
@@ -29,33 +30,42 @@ jobs:
           # (Optional) Restart the Remote Desktop service to ensure changes take effect
           Restart-Service -Name TermService -Force
 
-      - name: Create RDP User with Secure Password
+      - name: Create RDP User with specified Password
         run: |
-          Add-Type -AssemblyName System.Security
-          $charSet = @{
-              Upper   = [char[]](65..90)      # A-Z
-              Lower   = [char[]](97..122)     # a-z
-              Number  = [char[]](48..57)      # 0-9
-              Special = ([char[]](33..47) + [char[]](58..64) +
-                         [char[]](91..96) + [char[]](123..126)) # Special characters
+          # --------- INSECURE: Hardcoded password (will appear in workflow file) ----------
+          $plain = "Evan123456"
+          # If your policy requires complexity (special chars), adjust the password accordingly.
+          $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
+
+          # Create local user and add to groups
+          if (-not (Get-LocalUser -Name "Yanzz" -ErrorAction SilentlyContinue)) {
+              New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires
+          } else {
+              # If user exists, reset password
+              $user = Get-LocalUser -Name "Yanzz"
+              $user | Set-LocalUser -Password $securePass
           }
-          $rawPassword = @()
-          $rawPassword += $charSet.Upper | Get-Random -Count 4
-          $rawPassword += $charSet.Lower | Get-Random -Count 4
-          $rawPassword += $charSet.Number | Get-Random -Count 4
-          $rawPassword += $charSet.Special | Get-Random -Count 4
-          $password = -join ($rawPassword | Sort-Object { Get-Random })
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires
-          Add-LocalGroupMember -Group "Administrators" -Member "Yanzz"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz"
-          
-          echo "RDP_CREDS=User: Yanzz | Password: $password" >> $env:GITHUB_ENV
+
+          Add-LocalGroupMember -Group "Administrators" -Member "Yanzz" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "Yanzz" -ErrorAction SilentlyContinue
+
+          # WARNING: writing credentials to GITHUB_ENV or printing them to logs is insecure.
+          # This line will make the credentials available to subsequent steps as env var (but can be exposed in logs).
+          echo "RDP_CREDS=User: Yanzz | Password: Evan123456" >> $env:GITHUB_ENV
           
           if (-not (Get-LocalUser -Name "Yanzz")) {
               Write-Error "User creation failed"
               exit 1
           }
+
+          # ----------------- Recommended secure alternative -----------------
+          # Instead of hardcoding, store password in GitHub Secrets (e.g., RDP_PASSWORD)
+          # and use the following:
+          #
+          # $plain = "${{ secrets.RDP_PASSWORD }}"
+          # $securePass = ConvertTo-SecureString $plain -AsPlainText -Force
+          # New-LocalUser -Name "Yanzz" -Password $securePass -AccountNeverExpires
+          # echo "RDP_CREDS=User: Yanzz | Password: (stored in secret)" >> $env:GITHUB_ENV
 
       - name: Install Tailscale
         run: |
