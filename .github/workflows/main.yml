@@ -1,4 +1,4 @@
-name: Yanzz RDP (Win 2022 • Naruto Wallpaper • 60h)
+name: Yanzz RDP (Win 2022 • Anti-Lag + Naruto Wallpaper)
 
 on:
   workflow_dispatch:
@@ -12,51 +12,49 @@ jobs:
       TAILSCALE_VERSION: "1.82.0"
 
     steps:
-      - name: Enable RDP & firewall
+      - name: Enable RDP & open firewall
         shell: pwsh
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                           -Name "fDenyTSConnections" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP-3389-TCP" dir=in action=allow protocol=TCP localport=3389 | Out-Null
-          netsh advfirewall firewall add rule name="RDP-3389-UDP" dir=in action=allow protocol=UDP localport=3389 | Out-Null
-          Restart-Service TermService -Force
-          Write-Host "✅ RDP enabled."
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP-3389" dir=in action=allow protocol=TCP localport=3389 | Out-Null
+          Restart-Service -Name TermService -Force
 
-      - name: Create RDP user
+      - name: Create RDP User
         shell: pwsh
         run: |
           $user = "Yanzz"
           $pass = ConvertTo-SecureString "Evan123456" -AsPlainText -Force
           if (-not (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)) {
             New-LocalUser -Name $user -Password $pass -AccountNeverExpires | Out-Null
+          } else {
+            Set-LocalUser -Name $user -Password $pass
           }
           Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
-          Write-Host "✅ User $user created."
 
       - name: Install Tailscale
         shell: pwsh
         run: |
           $url = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
-          $path = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $url -OutFile $path
-          Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
-          Remove-Item $path -Force
-          Write-Host "✅ Tailscale installed."
+          $file = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $url -OutFile $file
+          Start-Process msiexec.exe -ArgumentList "/i `"$file`" /quiet /norestart" -Wait
+          Remove-Item $file -Force
 
-      - name: Connect Tailscale
+      - name: Connect to Tailscale
         shell: pwsh
         env:
           TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          if (-not $env:TS_KEY) { Write-Error "❌ No Tailscale key."; exit 1 }
+          if (-not $env:TS_KEY) { Write-Error "❌ Tailscale key not set"; exit 1 }
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
           Start-Sleep -Seconds 10
           $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-          Write-Host "🌐 Connected to Tailscale: $ip"
+          Write-Host "🌐 Tailscale IP: $ip"
 
-      - name: Boost Performance
+      - name: Max Performance (Anti-Lag)
         shell: pwsh
         run: |
           powercfg /setactive SCHEME_MIN
@@ -64,33 +62,37 @@ jobs:
           powercfg -change -disk-timeout-ac 0
           powercfg -change -standby-timeout-ac 0
           powercfg -change -hibernate-timeout-ac 0
-          Write-Host "⚡ Performance mode applied."
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" /v PowerThrottlingOff /t REG_DWORD /d 1 /f
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 26 /f
 
-      - name: Set Naruto Wallpaper (auto random)
+          $disable = @("SysMain","WSearch","DiagTrack","DoSvc","wuauserv","Themes","PrintSpooler")
+          foreach ($s in $disable) {
+            if (Get-Service -Name $s -ErrorAction SilentlyContinue) {
+              Stop-Service $s -Force -ErrorAction SilentlyContinue
+              Set-Service $s -StartupType Disabled -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host "✅ Performance optimized."
+
+      - name: Set Wallpaper
         shell: pwsh
         run: |
           $dir = "C:\Wallpapers"
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          $urls = @(
-            "https://images8.alphacoders.com/130/1309570.jpg",
-            "https://images6.alphacoders.com/103/1039579.jpg",
-            "https://images2.alphacoders.com/129/1296428.jpg",
-            "https://images8.alphacoders.com/130/1301521.jpg",
-            "https://wallpapers.com/images/high/naruto-sage-mode-4k-hd-7hfccxtr5o7v3duj.webp",
-            "https://i.pinimg.com/originals/f0/9e/24/f09e24b989ee27f2b5b74052b9f2ad85.jpg"
-          )
-          $url = $urls | Get-Random
-          $file = Join-Path $dir "naruto_wallpaper.jpg"
-          Invoke-WebRequest -Uri $url -OutFile $file -UseBasicParsing
-          Write-Host "🖼️  Downloaded wallpaper from $url"
 
-          $reg = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
-          if (-not (Test-Path $reg)) { New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies" -Name "System" | Out-Null }
-          New-ItemProperty -Path $reg -Name "Wallpaper" -Value $file -PropertyType String -Force | Out-Null
-          New-ItemProperty -Path $reg -Name "WallpaperStyle" -Value "2" -PropertyType String -Force | Out-Null
-          New-ItemProperty -Path $reg -Name "TileWallpaper" -Value "0" -PropertyType String -Force | Out-Null
-          gpupdate /target:computer /force | Out-Null
-          Write-Host "✅ Naruto wallpaper applied globally."
+          # ambil direct link dari halaman imgbb
+          $page = Invoke-WebRequest -Uri "https://ibb.co.com/LDBc8tmW" -UseBasicParsing
+          $img = ($page.Links | Where-Object { $_.href -match "i\.ibb\.co" -and $_.href -match '\.jpg|\.png' } | Select-Object -First 1).href
+          if (-not $img) { Write-Error "❌ Gagal ambil direct link dari halaman ImgBB"; exit 1 }
+
+          $out = Join-Path $dir "wallpaper.jpg"
+          Invoke-WebRequest -Uri $img -OutFile $out -UseBasicParsing
+          Write-Host "🖼️ Wallpaper downloaded from $img"
+
+          reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "$out" /f
+          reg add "HKCU\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d 2 /f
+          rundll32.exe user32.dll, UpdatePerUserSystemParameters 1, True
+          Write-Host "✅ Wallpaper applied!"
 
       - name: Show Access Info
         shell: pwsh
@@ -101,10 +103,10 @@ jobs:
           Write-Host "Password: Evan123456"
           Write-Host "=========================`n"
 
-      - name: Keep Alive (60h)
+      - name: Keep Alive
         shell: pwsh
         run: |
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP active | Naruto wallpaper"
+            Write-Host "[$(Get-Date -Format o)] 🟢 RDP running with wallpaper"
             Start-Sleep -Seconds 300
           }
