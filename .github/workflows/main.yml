@@ -1,11 +1,11 @@
-name: Yanzz RDP (Win 2022 • Anti-Lag + Naruto Wallpaper)
+name: Yanzz RDP (Win Latest • Anti-Lag + Naruto Wallpaper)
 
 on:
   workflow_dispatch:
 
 jobs:
   rdp-naruto:
-    runs-on: windows-2022
+    runs-on: windows-latest
     timeout-minutes: 3600
 
     env:
@@ -80,7 +80,6 @@ jobs:
           $dir = "C:\Wallpapers"
           New-Item -ItemType Directory -Path $dir -Force | Out-Null
 
-          # ambil direct link dari halaman imgbb
           $page = Invoke-WebRequest -Uri "https://ibb.co.com/LDBc8tmW" -UseBasicParsing
           $img = ($page.Links | Where-Object { $_.href -match "i\.ibb\.co" -and $_.href -match '\.jpg|\.png' } | Select-Object -First 1).href
           if (-not $img) { Write-Error "❌ Gagal ambil direct link dari halaman ImgBB"; exit 1 }
