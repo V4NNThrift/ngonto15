@@ -54,7 +54,7 @@ jobs:
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "🌐 Tailscale IP: $ip"
 
-         $tmp = "$env:TEMP\stardesk"; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+          $tmp = "$env:TEMP\stardesk"; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
           $out = Join-Path $tmp "StarDesk_1.0.1.exe"
 
           # 1) Pakai input kalau disediakan
