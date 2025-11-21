@@ -54,47 +54,6 @@ jobs:
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "🌐 Tailscale IP: $ip"
 
-      - name: Max Performance (MAX BOOST)
-        shell: pwsh
-        run: |
-          powercfg /setactive SCHEME_MIN
-          powercfg -change -monitor-timeout-ac 0
-          powercfg -change -disk-timeout-ac 0
-          powercfg -change -standby-timeout-ac 0
-          powercfg -change -hibernate-timeout-ac 0
-          reg add "HKLM\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling" /v PowerThrottlingOff /t REG_DWORD /d 1 /f
-          reg add "HKLM\SYSTEM\CurrentControlSet\Control\PriorityControl" /v Win32PrioritySeparation /t REG_DWORD /d 26 /f
-          # RDP codec/renderer tweak (tetap berguna meski tanpa GPU)
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v UseHardwareEncoderForRDP /t REG_DWORD /d 1 /f
-          reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services" /v fEnableHardwareRender /t REG_DWORD /d 1 /f
-          # Kurangi efek visual
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f
-          # Optional: matikan service yang berat
-          $disable = @("SysMain","WSearch","DiagTrack","DoSvc","wuauserv","Themes","PrintSpooler")
-          foreach ($s in $disable) {
-            if (Get-Service -Name $s -ErrorAction SilentlyContinue) {
-              Stop-Service $s -Force -ErrorAction SilentlyContinue
-              Set-Service $s -StartupType Disabled -ErrorAction SilentlyContinue
-            }
-          }
-          Write-Host "✅ MAX BOOST applied."
-
-      - name: Set Wallpaper
-        shell: pwsh
-        run: |
-          $dir = "C:\Wallpapers"
-          New-Item -ItemType Directory -Path $dir -Force | Out-Null
-          $page = Invoke-WebRequest -Uri "https://ibb.co.com/LDBc8tmW" -UseBasicParsing
-          $img = ($page.Links | Where-Object { $_.href -match "i\.ibb\.co" -and $_.href -match '\.jpg|\.png' } | Select-Object -First 1).href
-          if (-not $img) { Write-Error "❌ Gagal ambil direct link dari halaman ImgBB"; exit 1 }
-          $out = Join-Path $dir "wallpaper.jpg"
-          Invoke-WebRequest -Uri $img -OutFile $out -UseBasicParsing
-          reg add "HKCU\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "$out" /f
-          reg add "HKCU\Control Panel\Desktop" /v WallpaperStyle /t REG_SZ /d 2 /f
-          rundll32.exe user32.dll, UpdatePerUserSystemParameters 1, True
-          Write-Host "🖼️ Wallpaper applied!"
-
       - name: Show Access Info
         shell: pwsh
         run: |
