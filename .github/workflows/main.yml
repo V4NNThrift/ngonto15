@@ -54,7 +54,7 @@ jobs:
           echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
           Write-Host "🌐 Tailscale IP: $ip"
 
-          $tmp = "$env:TEMP\stardesk"; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
+         $tmp = "$env:TEMP\stardesk"; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
           $out = Join-Path $tmp "StarDesk_1.0.1.exe"
 
           # 1) Pakai input kalau disediakan
@@ -65,7 +65,7 @@ jobs:
           # 2) Kandidat URL umum ke file StarDesk_1.0.1.exe
           $filename = "StarDesk_1.0.1.exe"
           $urls += @(
-            "https://www.stardesk.net/$filename",
+            "https://dl.stardesk.net/StarDesk_Setup_1.0.3.5729_1112150048_official.exe?n=StarDesk_1.0.3.exe",
             "https://www.stardesk.net/res/download/$filename",
             "https://stardesk.net/$filename",
             "https://download.stardesk.net/$filename",
