@@ -1,23 +1,33 @@
-name: Yanzz RDP (Win 2022 • MAX BOOST + Naruto)
+name: RDP + Tailscale + StarDesk (runneradmin)
 
 on:
   workflow_dispatch:
+    inputs:
+      STAR_DESK_URL:
+        description: "Optional: direct URL to StarDesk_1.0.1.exe (paste if known)"
+        required: false
+        default: ""
 
 jobs:
-  rdp-naruto:
+  setup-remote:
     runs-on: windows-latest
-    timeout-minutes: 3600
-
-    env:
-      TAILSCALE_VERSION: "1.82.0"
+    timeout-minutes: 360   # tahan sampai 6 jam; ubah sesuai kebutuhan
 
     steps:
-      - name: Enable RDP & open firewall
+      - name: Enable RDP & firewall
         shell: pwsh
         run: |
+          # Aktifkan RDP
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          # (opsional) nonaktifkan NLA untuk testing cepat
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP-3389" dir=in action=allow protocol=TCP localport=3389 | Out-Null
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+
+          # Firewall allow 3389
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+
+          # Restart RDP service
           Restart-Service -Name TermService -Force
 
       - name: Create RDP User
@@ -33,27 +43,64 @@ jobs:
           Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
 
-      - name: Install Tailscale
+      - name: Install Tailscale (robust)
         shell: pwsh
         run: |
-          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-$env:TAILSCALE_VERSION-amd64.msi"
-          $file = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $url -OutFile $file
-          Start-Process msiexec.exe -ArgumentList "/i `"$file`" /quiet /norestart" -Wait
-          Remove-Item $file -Force
+          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
+          $installerPath = "$env:TEMP\tailscale.msi"
+          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
+          $p = Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/qn", "/norestart" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "Tailscale MSI install failed ($($p.ExitCode))"; exit 1 }
 
-      - name: Connect to Tailscale
+          # Temukan tailscale.exe
+          $candidates = @(
+            "$env:ProgramFiles\Tailscale LLC\Tailscale\tailscale.exe",
+            "$env:ProgramFiles\Tailscale\tailscale.exe",
+            "$env:ProgramFiles(x86)\Tailscale LLC\Tailscale\tailscale.exe",
+            "$env:ProgramFiles(x86)\Tailscale\tailscale.exe"
+          )
+          $tsExe = $null
+          for ($i=0; $i -lt 20 -and -not $tsExe; $i++) {
+            $tsExe = ($candidates | Where-Object { Test-Path $_ } | Select-Object -First 1)
+            if (-not $tsExe) {
+              try {
+                $f = Get-ChildItem -Path "$env:ProgramFiles*", "C:\ProgramData" -Recurse -Filter "tailscale.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($f) { $tsExe = $f.FullName }
+              } catch {}
+            }
+            if (-not $tsExe) { Start-Sleep -Seconds 2 }
+          }
+          if (-not $tsExe) { Write-Error "tailscale.exe not found"; exit 1 }
+          echo "TS_EXE=$tsExe" >> $env:GITHUB_ENV
+          Write-Host "tailscale.exe at: $tsExe"
+
+      - name: Connect Tailscale
         shell: pwsh
-        env:
-          TS_KEY: ${{ secrets.TAILSCALE_AUTH_KEY }}
         run: |
-          if (-not $env:TS_KEY) { Write-Error "❌ Tailscale key not set"; exit 1 }
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey "$env:TS_KEY" --hostname "gh-runner-$env:GITHUB_RUN_ID"
-          Start-Sleep -Seconds 10
-          $ip = (& "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 | Select-Object -First 1).Trim()
-          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-          Write-Host "🌐 Tailscale IP: $ip"
+          $tsExe = $env:TS_EXE
+          & $tsExe up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gh-runner-$env:GITHUB_RUN_ID"
+          if ($LASTEXITCODE -ne 0) { Write-Error "tailscale up failed ($LASTEXITCODE)"; exit $LASTEXITCODE }
 
+          # Ambil IPv4 dengan retry
+          $tsIP = $null; $retries = 0
+          while (-not $tsIP -and $retries -lt 12) {
+            $tsIP = & $tsExe ip -4
+            if (-not $tsIP) { Start-Sleep -Seconds 5; $retries++ }
+          }
+          if (-not $tsIP) { Write-Error "No Tailscale IPv4"; exit 1 }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $tsIP"
+
+      - name: Verify RDP port via Tailscale
+        shell: pwsh
+        run: |
+          $r = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $r.TcpTestSucceeded) { Write-Error "RDP 3389 not reachable"; exit 1 }
+          Write-Host "RDP 3389 reachable."
+
+      - name: Install StarDesk 1.0.1
+        shell: pwsh
+        run: |
           $tmp = "$env:TEMP\stardesk"; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
           $out = Join-Path $tmp "StarDesk_1.0.1.exe"
 
@@ -65,7 +112,7 @@ jobs:
           # 2) Kandidat URL umum ke file StarDesk_1.0.1.exe
           $filename = "StarDesk_1.0.1.exe"
           $urls += @(
-            "https://dl.stardesk.net/StarDesk_Setup_1.0.3.5729_1112150048_official.exe?n=StarDesk_1.0.3.exe",
+            "https://www.stardesk.net/$filename",
             "https://www.stardesk.net/res/download/$filename",
             "https://stardesk.net/$filename",
             "https://download.stardesk.net/$filename",
@@ -85,20 +132,38 @@ jobs:
           if (-not $success) {
             Write-Error "Gagal download StarDesk_1.0.1.exe. Jalankan lagi dan isi input STAR_DESK_URL (link langsung dari tombol 'StarDesk for Windows')."
             exit 1
-            
-      - name: Show Access Info
-        shell: pwsh
-        run: |
-          Write-Host "`n=== RDP ACCESS INFO ==="
-          Write-Host "Address : $env:TAILSCALE_IP"
-          Write-Host "Username: Yanzz"
-          Write-Host "Password: Evan123456"
-          Write-Host "=========================`n"
+          }
 
-      - name: Keep Alive
+          # Coba silent switches umum; jika gagal, jalankan normal
+          $args = @("/S", "/silent", "/verysilent")
+          $installed = $false
+          foreach ($a in $args) {
+            try {
+              $p = Start-Process -FilePath $out -ArgumentList $a -Wait -PassThru -WindowStyle Hidden
+              if ($p.ExitCode -eq 0) { $installed = $true; break }
+            } catch {}
+          }
+          if (-not $installed) {
+            Write-Host "Silent unknown; running without switches..."
+            Start-Process -FilePath $out -Wait
+          }
+          Write-Host "StarDesk installer executed."
+
+      - name: Show connection info & keep alive
         shell: pwsh
+        timeout-minutes: 360
         run: |
+          Write-Host "`n=== RDP ACCESS ==="
+          Write-Host "Address : $env:TAILSCALE_IP"
+          Write-Host "Username: $env:RDP_USER"
+          Write-Host "Password: $env:RDP_PASS"
+          Write-Host "==================`n"
+
+          # Pastikan port 3389 listen
+          try { Get-NetTCPConnection -LocalPort 3389 -State Listen | Out-Host } catch {}
+
+          # Keep runner hidup
           while ($true) {
-            Write-Host "[$(Get-Date -Format o)] 🟢 RDP running (MAX BOOST)"
+            Write-Host "[$(Get-Date)] RDP Active - Cancel workflow to terminate"
             Start-Sleep -Seconds 300
           }
