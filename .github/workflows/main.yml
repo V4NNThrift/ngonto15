@@ -98,57 +98,6 @@ jobs:
           if (-not $r.TcpTestSucceeded) { Write-Error "RDP 3389 not reachable"; exit 1 }
           Write-Host "RDP 3389 reachable."
 
-      - name: Install StarDesk 1.0.1
-        shell: pwsh
-        run: |
-          $tmp = "$env:TEMP\stardesk"; New-Item -ItemType Directory -Path $tmp -Force | Out-Null
-          $out = Join-Path $tmp "StarDesk_1.0.1.exe"
-
-          # 1) Pakai input kalau disediakan
-          $urlInput = "${{ github.event.inputs.STAR_DESK_URL }}"
-          $urls = @()
-          if ($urlInput -and $urlInput.Trim().Length -gt 0) { $urls += $urlInput.Trim() }
-
-          # 2) Kandidat URL umum ke file StarDesk_1.0.1.exe
-          $filename = "StarDesk_1.0.1.exe"
-          $urls += @(
-            "https://www.stardesk.net/$filename",
-            "https://www.stardesk.net/res/download/$filename",
-            "https://stardesk.net/$filename",
-            "https://download.stardesk.net/$filename",
-            "https://cdn.stardesk.net/$filename"
-          )
-
-          $success = $false
-          foreach ($u in $urls) {
-            try {
-              Write-Host "Trying $u"
-              Invoke-WebRequest -Uri $u -OutFile $out -UseBasicParsing -TimeoutSec 180 -MaximumRedirection 5
-              if ((Test-Path $out) -and ((Get-Item $out).Length -gt 2MB)) { $success = $true; break }
-            } catch {
-              Write-Host "Failed: $u"
-            }
-          }
-          if (-not $success) {
-            Write-Error "Gagal download StarDesk_1.0.1.exe. Jalankan lagi dan isi input STAR_DESK_URL (link langsung dari tombol 'StarDesk for Windows')."
-            exit 1
-          }
-
-          # Coba silent switches umum; jika gagal, jalankan normal
-          $args = @("/S", "/silent", "/verysilent")
-          $installed = $false
-          foreach ($a in $args) {
-            try {
-              $p = Start-Process -FilePath $out -ArgumentList $a -Wait -PassThru -WindowStyle Hidden
-              if ($p.ExitCode -eq 0) { $installed = $true; break }
-            } catch {}
-          }
-          if (-not $installed) {
-            Write-Host "Silent unknown; running without switches..."
-            Start-Process -FilePath $out -Wait
-          }
-          Write-Host "StarDesk installer executed."
-
       - name: Show connection info & keep alive
         shell: pwsh
         timeout-minutes: 360
