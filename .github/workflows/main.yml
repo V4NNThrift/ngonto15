@@ -1,118 +1,61 @@
-name: RDP + Tailscale + StarDesk (runneradmin)
+name: Ubuntu + Tailscale + SSH
 
 on:
   workflow_dispatch:
-    inputs:
-      STAR_DESK_URL:
-        description: "Optional: direct URL to StarDesk_1.0.1.exe (paste if known)"
-        required: false
-        default: ""
 
 jobs:
   setup-remote:
-    runs-on: windows-latest
-    timeout-minutes: 360   # tahan sampai 6 jam; ubah sesuai kebutuhan
+    runs-on: self-hosted
+    timeout-minutes: 360
 
     steps:
-      - name: Enable RDP & firewall
-        shell: pwsh
+      - name: Install Tailscale
+        shell: bash
         run: |
-          # Aktifkan RDP
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          # (opsional) nonaktifkan NLA untuk testing cepat
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-
-          # Firewall allow 3389
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-
-          # Restart RDP service
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User
-        shell: pwsh
-        run: |
-          $user = "Yanzz"
-          $pass = ConvertTo-SecureString "Evan123456" -AsPlainText -Force
-          if (-not (Get-LocalUser -Name $user -ErrorAction SilentlyContinue)) {
-            New-LocalUser -Name $user -Password $pass -AccountNeverExpires | Out-Null
-          } else {
-            Set-LocalUser -Name $user -Password $pass
-          }
-          Add-LocalGroupMember -Group "Administrators" -Member $user -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $user -ErrorAction SilentlyContinue
-
-      - name: Install Tailscale (robust)
-        shell: pwsh
-        run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          $p = Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/qn", "/norestart" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { Write-Error "Tailscale MSI install failed ($($p.ExitCode))"; exit 1 }
-
-          # Temukan tailscale.exe
-          $candidates = @(
-            "$env:ProgramFiles\Tailscale LLC\Tailscale\tailscale.exe",
-            "$env:ProgramFiles\Tailscale\tailscale.exe",
-            "$env:ProgramFiles(x86)\Tailscale LLC\Tailscale\tailscale.exe",
-            "$env:ProgramFiles(x86)\Tailscale\tailscale.exe"
-          )
-          $tsExe = $null
-          for ($i=0; $i -lt 20 -and -not $tsExe; $i++) {
-            $tsExe = ($candidates | Where-Object { Test-Path $_ } | Select-Object -First 1)
-            if (-not $tsExe) {
-              try {
-                $f = Get-ChildItem -Path "$env:ProgramFiles*", "C:\ProgramData" -Recurse -Filter "tailscale.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-                if ($f) { $tsExe = $f.FullName }
-              } catch {}
-            }
-            if (-not $tsExe) { Start-Sleep -Seconds 2 }
-          }
-          if (-not $tsExe) { Write-Error "tailscale.exe not found"; exit 1 }
-          echo "TS_EXE=$tsExe" >> $env:GITHUB_ENV
-          Write-Host "tailscale.exe at: $tsExe"
+          curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Connect Tailscale
-        shell: pwsh
+        shell: bash
         run: |
-          $tsExe = $env:TS_EXE
-          & $tsExe up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname="gh-runner-$env:GITHUB_RUN_ID"
-          if ($LASTEXITCODE -ne 0) { Write-Error "tailscale up failed ($LASTEXITCODE)"; exit $LASTEXITCODE }
+          sudo tailscale up \
+            --authkey="${{ secrets.TAILSCALE_AUTH_KEY }}" \
+            --hostname="ubuntu-runner-${{ github.run_id }}"
 
-          # Ambil IPv4 dengan retry
-          $tsIP = $null; $retries = 0
-          while (-not $tsIP -and $retries -lt 12) {
-            $tsIP = & $tsExe ip -4
-            if (-not $tsIP) { Start-Sleep -Seconds 5; $retries++ }
-          }
-          if (-not $tsIP) { Write-Error "No Tailscale IPv4"; exit 1 }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $tsIP"
+          TS_IP=$(tailscale ip -4)
+          echo "TAILSCALE_IP=$TS_IP" >> $GITHUB_ENV
+          echo "Tailscale IP: $TS_IP"
 
-      - name: Verify RDP port via Tailscale
-        shell: pwsh
+      - name: Enable SSH
+        shell: bash
         run: |
-          $r = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $r.TcpTestSucceeded) { Write-Error "RDP 3389 not reachable"; exit 1 }
-          Write-Host "RDP 3389 reachable."
+          sudo apt update
+          sudo apt install -y openssh-server
+          sudo systemctl enable ssh
+          sudo systemctl restart ssh
 
-      - name: Show connection info & keep alive
-        shell: pwsh
-        timeout-minutes: 360
+      - name: Create SSH User
+        shell: bash
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address : $env:TAILSCALE_IP"
-          Write-Host "Username: $env:RDP_USER"
-          Write-Host "Password: $env:RDP_PASS"
-          Write-Host "==================`n"
+          USERNAME="yanzz"
+          PASSWORD="Evan123456"
 
-          # Pastikan port 3389 listen
-          try { Get-NetTCPConnection -LocalPort 3389 -State Listen | Out-Host } catch {}
+          if ! id "$USERNAME" >/dev/null 2>&1; then
+            sudo useradd -m -s /bin/bash "$USERNAME"
+          fi
 
-          # Keep runner hidup
-          while ($true) {
-            Write-Host "[$(Get-Date)] RDP Active - Cancel workflow to terminate"
-            Start-Sleep -Seconds 300
-          }
+          echo "$USERNAME:$PASSWORD" | sudo chpasswd
+          sudo usermod -aG sudo "$USERNAME"
+
+      - name: Show SSH Info & keep alive
+        shell: bash
+        run: |
+          echo "=== SSH ACCESS ==="
+          echo "Address : $TAILSCALE_IP"
+          echo "Username: yanzz"
+          echo "Password: Evan123456"
+          echo "=================="
+
+          while true; do
+            echo "$(date) SSH Active - cancel workflow to terminate"
+            sleep 300
+          done
