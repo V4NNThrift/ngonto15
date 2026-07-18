@@ -28,23 +28,22 @@ jobs:
       - name: Set Administrator Password
         run: |
           $password = "Evan123456"
+          $adminUser = $env:USERNAME
           
-          # Mengaktifkan akun Administrator bawaan dan mengubah passwordnya
-          net user Administrator $password /active:yes
+          # Mendeteksi otomatis akun bawaan GitHub (runneradmin) dan mengubah passwordnya
+          net user $adminUser $password
           
-          echo "RDP_CREDS=User: Administrator | Password: $password" >> $env:GITHUB_ENV
+          echo "RDP_CREDS=User: $adminUser | Password: $password" >> $env:GITHUB_ENV
 
       - name: Auto-Install Paket Lengkap Coding
         run: |
           Write-Host "Menginstal VS Code, Node.js, Python, Git, Notepad++, dan 7-Zip via Chocolatey..."
-          # Choco otomatis skip kalau aplikasi udah ada di sistem
           choco install vscode nodejs-lts python git notepadplusplus 7zip -y --no-progress
           
           Write-Host "Mengunduh dan menyiapkan Pawno..."
           $pawnoDir = "C:\Pawno"
           if (-not (Test-Path $pawnoDir)) {
               New-Item -ItemType Directory -Force -Path $pawnoDir
-              # Mengunduh komunitas Pawn Compiler terbaru
               $pawnUrl = "https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip"
               $zipPath = "$env:TEMP\pawno.zip"
               
@@ -98,8 +97,7 @@ jobs:
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "Username: Administrator"
-          Write-Host "Password: $(echo $env:RDP_CREDS)"
+          Write-Host "$(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
           
           while ($true) {
