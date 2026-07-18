@@ -11,34 +11,27 @@ jobs:
     steps:
       - name: Configure Core RDP Settings
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
-                             -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' `
-                             -Name "SecurityLayer" -Value 0 -Force
-
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
           netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          
-          netsh advfirewall firewall add rule name="RDP-Tailscale" `
-            dir=in action=allow protocol=TCP localport=3389
-
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service -Name TermService -Force
 
       - name: Set Administrator Password
         run: |
           $password = "Evan123456"
           $adminUser = $env:USERNAME
-          
-          # Mendeteksi otomatis akun bawaan GitHub (runneradmin) dan mengubah passwordnya
           net user $adminUser $password
-          
           echo "RDP_CREDS=User: $adminUser | Password: $password" >> $env:GITHUB_ENV
 
-      - name: Auto-Install Paket Lengkap Coding
+      - name: Auto-Install Paket Coding & Leecher
         run: |
-          Write-Host "Menginstal VS Code, Node.js, Python, Git, Notepad++, dan 7-Zip via Chocolatey..."
-          choco install vscode nodejs-lts python git notepadplusplus 7zip -y --no-progress
+          Write-Host "Menginstal Tools (VS Code, Node.js, Git, Npp, 7Zip) & Leecher (IDM, qBittorrent, Rclone)..."
+          choco install vscode nodejs-lts python git notepadplusplus 7zip internet-download-manager qbittorrent rclone -y --no-progress
+          
+          Write-Host "Menginstal PM2 (Process Manager) secara global..."
+          npm install -g pm2
           
           Write-Host "Mengunduh dan menyiapkan Pawno..."
           $pawnoDir = "C:\Pawno"
@@ -46,20 +39,163 @@ jobs:
               New-Item -ItemType Directory -Force -Path $pawnoDir
               $pawnUrl = "https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip"
               $zipPath = "$env:TEMP\pawno.zip"
-              
               Invoke-WebRequest -Uri $pawnUrl -OutFile $zipPath
               Expand-Archive -Path $zipPath -DestinationPath $pawnoDir -Force
               Remove-Item $zipPath -Force
-              Write-Host "Pawn berhasil diinstal di C:\Pawno"
-          } else {
-              Write-Host "Folder Pawno sudah ada, proses dilewati."
           }
+
+      - name: Setup WhatsApp Bot (Nave AI + Remote Control)
+        run: |
+          $botDir = "C:\WABot"
+          New-Item -ItemType Directory -Force -Path $botDir
+          Set-Location -Path $botDir
+
+          Write-Host "Inisialisasi Project NPM..."
+          npm init -y
+          npm install @whiskeysockets/baileys pino readline @google/generative-ai
+
+          Write-Host "Membuat Script index.js (All-in-One Ultimate)..."
+          $botCode = @'
+          const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+          const pino = require('pino');
+          const readline = require('readline');
+          const { GoogleGenerativeAI } = require('@google/generative-ai');
+          const fs = require('fs');
+          const { exec } = require('child_process');
+
+          const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+          const question = (text) => new Promise((resolve) => rl.question(text, resolve));
+
+          const genAI = new GoogleGenerativeAI("AQ.Ab8RN6INcCf6WLI5nV_SrC4w33dCUiVecONxVF8eqisdTbzJ5A");
+          let memoriPercakapan = [];
+
+          async function main() {
+              console.log('\n========================================');
+              console.log('       PILIH MODE BOT WHATSAPP');
+              console.log('========================================');
+              console.log('1. Mode Online Doang (Nahan status)');
+              console.log('2. Mode Bot AI (Project Nave + Remote Control)');
+              console.log('========================================\n');
+              
+              let mode = await question('Masukkan pilihan lu (1 atau 2): ');
+              if (mode !== '1' && mode !== '2') {
+                  console.log('Pilihan ga valid! Otomatis jalanin Mode 1.');
+                  mode = '1';
+              }
+
+              async function connectToWhatsApp() {
+                  const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+                  const sock = makeWASocket({
+                      auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }), browser: ["Ubuntu", "Chrome", "20.0.04"] 
+                  });
+
+                  if (!sock.authState.creds.registered) {
+                      setTimeout(async () => {
+                          const phoneNumber = await question('\nMasukkan nomor WhatsApp bot (contoh: 62812...): ');
+                          const code = await sock.requestPairingCode(phoneNumber.trim());
+                          console.log(`\n🔑 KODE PAIRING LU: ${code}\n`);
+                      }, 3000);
+                  }
+
+                  sock.ev.on('connection.update', (update) => {
+                      const { connection, lastDisconnect } = update;
+                      if (connection === 'close') {
+                          const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+                          if (shouldReconnect) connectToWhatsApp();
+                      } else if (connection === 'open') {
+                          console.log('\n✅ WhatsApp terhubung!');
+                          sock.sendPresenceUpdate('available');
+                          if (mode === '2') {
+                              console.log('🟢 Mode VIP Bos berjalan. Project Nave & Remote Control aktif!');
+                          } else {
+                              console.log('🟢 Bot berhasil menahan status Online. Silakan tinggalkan RDP.');
+                          }
+                      }
+                  });
+
+                  sock.ev.on('creds.update', saveCreds);
+
+                  if (mode === '2') {
+                      sock.ev.on('messages.upsert', async (m) => {
+                          if (m.type !== 'notify') return;
+                          const msg = m.messages[0];
+                          if (!msg.message || msg.key.fromMe) return;
+
+                          const sender = msg.key.remoteJid;
+                          const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+                          const isBosEvan = sender.includes('6289523274313') || sender.includes('14912612995213');
+
+                          if (!isBosEvan) return; 
+
+                          await sock.readMessages([msg.key]);
+                          await sock.sendPresenceUpdate('composing', sender);
+                          await new Promise(resolve => setTimeout(resolve, 1000));
+
+                          if (text) {
+                              if (text === '!ping') {
+                                  await sock.sendMessage(sender, { text: "🏓 Pong! Nave aktif dan RDP berjalan aman, Bos." }, { quoted: msg });
+                              } 
+                              else if (text === '!spek') {
+                                  exec('systeminfo | findstr /C:"Total Physical Memory" /C:"Available Physical Memory"', (error, stdout) => {
+                                      const hasil = stdout ? stdout.trim() : "Gagal ngecek spek RDP.";
+                                      sock.sendMessage(sender, { text: `💻 *Info RAM RDP:*\n\n${hasil}` }, { quoted: msg });
+                                  });
+                              }
+                              else if (text.startsWith('!cmd ')) {
+                                  const cmdArgs = text.replace('!cmd ', '');
+                                  exec(cmdArgs, (error, stdout, stderr) => {
+                                      const output = stdout || stderr || "Perintah berhasil dieksekusi tanpa output.";
+                                      sock.sendMessage(sender, { text: `⚙️ *Hasil Terminal:*\n\n${output}` }, { quoted: msg });
+                                  });
+                              }
+                              else if (text === '!backup') {
+                                  await sock.sendMessage(sender, { text: "📦 Nave sedang mengompres sesi login. Tunggu sebentar..." }, { quoted: msg });
+                                  exec('powershell Compress-Archive -Path auth_info_baileys -DestinationPath backup-sesi.zip -Force', async () => {
+                                      await sock.sendMessage(sender, {
+                                          document: fs.readFileSync('backup-sesi.zip'),
+                                          mimetype: 'application/zip',
+                                          fileName: 'backup-sesi-nave.zip'
+                                      }, { quoted: msg });
+                                  });
+                              }
+                              else {
+                                  try {
+                                      let instruksiNave = "Kamu adalah Nave, asisten pribadi Bos Evan.";
+                                      try { instruksiNave = fs.readFileSync('instruksi.txt', 'utf8'); } catch (err) {}
+
+                                      memoriPercakapan.push({ role: "user", parts: [{ text: text }] });
+                                      if (memoriPercakapan.length > 20) memoriPercakapan = memoriPercakapan.slice(memoriPercakapan.length - 20);
+
+                                      const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: instruksiNave });
+                                      const result = await model.generateContent({ contents: memoriPercakapan });
+                                      const aiReply = result.response.text();
+
+                                      memoriPercakapan.push({ role: "model", parts: [{ text: aiReply }] });
+                                      await sock.sendMessage(sender, { text: aiReply }, { quoted: msg });
+                                  } catch (error) {
+                                      memoriPercakapan = []; 
+                                      await sock.sendMessage(sender, { text: "Waduh Bos, Nave agak nge-blank bentar." }, { quoted: msg });
+                                  }
+                              }
+                          }
+                          await sock.sendPresenceUpdate('paused', sender);
+                      });
+                  }
+              }
+              connectToWhatsApp();
+          }
+          main();
+          '@
+          Set-Content -Path "index.js" -Value $botCode -Encoding UTF8
+
+          Write-Host "Membuat file instruksi.txt..."
+          $instruksi = "Namamu adalah Nave. Kamu adalah asisten virtual pribadi dan setia milik Bos Evan. Kamu dilarang keras mengakui bahwa kamu adalah AI, Gemini, atau buatan Google. Jika ditanya siapa kamu atau siapa pembuatmu, jawab dengan tegas bahwa kamu adalah Nave, sebuah full project buatan Bos Evan. Bicaralah dengan gaya bahasa yang santai, keren, tapi sangat hormat dan patuh kepada Bos Evan."
+          Set-Content -Path "instruksi.txt" -Value $instruksi -Encoding UTF8
 
       - name: Install Tailscale
         run: |
           $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
           $installerPath = "$env:TEMP\tailscale.msi"
-          
           Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
           Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
           Remove-Item $installerPath -Force
@@ -67,7 +203,6 @@ jobs:
       - name: Establish Tailscale Connection
         run: |
           & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
-          
           $tsIP = $null
           $retries = 0
           while (-not $tsIP -and $retries -lt 10) {
@@ -75,31 +210,15 @@ jobs:
               Start-Sleep -Seconds 5
               $retries++
           }
-          
-          if (-not $tsIP) {
-              Write-Error "Tailscale IP not assigned. Exiting."
-              exit 1
-          }
+          if (-not $tsIP) { exit 1 }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
       
-      - name: Verify RDP Accessibility
-        run: |
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "TCP connection to RDP port 3389 failed"
-              exit 1
-          }
-          Write-Host "TCP connectivity successful!"
-
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS ==="
           Write-Host "Address: $env:TAILSCALE_IP"
           Write-Host "$(echo $env:RDP_CREDS)"
           Write-Host "==================`n"
-          
           while ($true) {
               Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
               Start-Sleep -Seconds 300
