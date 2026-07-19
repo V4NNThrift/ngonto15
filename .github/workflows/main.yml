@@ -9,6 +9,13 @@ jobs:
     timeout-minutes: 3600
 
     steps:
+      - name: Bersihkan Lingkungan (Anti-Crash aaPanel)
+        run: |
+          echo "Menghapus web server bawaan GitHub yang bikin bentrok..."
+          sudo systemctl stop apache2 nginx mysql || true
+          sudo apt-get purge -y apache2 nginx apache2-utils apache2-bin || true
+          sudo apt-get autoremove -y || true
+
       - name: Install Core Packages
         run: |
           sudo apt-get update
@@ -47,9 +54,10 @@ jobs:
 
       - name: Instalasi aaPanel (Professional Control Panel)
         run: |
-          echo "Memulai instalasi aaPanel... Ini memakan waktu beberapa menit."
+          echo "Memulai instalasi aaPanel... (Tunggu 2-4 Menit)"
           wget -O install.sh http://www.aapanel.com/script/install-ubuntu_6.0_en.sh
-          echo -e "y\nn\n" | sudo bash install.sh aapanel
+          # Mengirim konfirmasi 'yes' untuk maksa install, lalu 'y', lalu 'n'
+          echo -e "yes\ny\nn\ny\n" | sudo bash install.sh aapanel
 
       - name: Konfigurasi Akses Tailscale
         run: |
@@ -74,7 +82,7 @@ jobs:
           echo "SSH User   : runner (Pass: Evan123456)"
           echo "------------------------------------------"
           echo "DATA LOGIN aaPanel LU ADA DI BAWAH INI:"
-          sudo /etc/init.d/bt default || echo "Data login sedang disiapkan sistem. Silakan login via SSH dan ketik: sudo bt default"
+          sudo /etc/init.d/bt default || echo "Login belum siap, cek manual via SSH: sudo bt default"
           echo "=========================================="
 
       - name: Menjalankan Sistem Utama
