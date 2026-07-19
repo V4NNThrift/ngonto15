@@ -47,9 +47,8 @@ jobs:
 
       - name: Instalasi aaPanel (Professional Control Panel)
         run: |
-          echo "Memulai instalasi aaPanel..."
+          echo "Memulai instalasi aaPanel... Ini memakan waktu beberapa menit."
           wget -O install.sh http://www.aapanel.com/script/install-ubuntu_6.0_en.sh
-          # Menjawab 'y' untuk direktori /www dan 'n' untuk SSL (agar mudah diakses via IP Tailscale)
           echo -e "y\nn\n" | sudo bash install.sh aapanel
 
       - name: Konfigurasi Akses Tailscale
@@ -75,8 +74,7 @@ jobs:
           echo "SSH User   : runner (Pass: Evan123456)"
           echo "------------------------------------------"
           echo "DATA LOGIN aaPanel LU ADA DI BAWAH INI:"
-          # Memunculkan kredensial rahasia aaPanel
-          sudo bt default
+          sudo /etc/init.d/bt default || echo "Data login sedang disiapkan sistem. Silakan login via SSH dan ketik: sudo bt default"
           echo "=========================================="
 
       - name: Menjalankan Sistem Utama
