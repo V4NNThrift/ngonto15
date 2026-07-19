@@ -1,97 +1,119 @@
-name: Yanzz RDP
+name: Yanzz Ubuntu RDP All-in-One
 
 on:
   workflow_dispatch:
 
 jobs:
-  secure-rdp:
-    runs-on: windows-latest
+  ubuntu-rdp:
+    runs-on: ubuntu-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Configure Core RDP Settings
+      - name: Install Desktop & RDP Core
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall delete rule name="RDP-Tailscale"
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          Restart-Service -Name TermService -Force
-
-      - name: Set Administrator Password
-        run: |
-          $password = "Evan123456"
-          $adminUser = $env:USERNAME
-          net user $adminUser $password
-          echo "RDP_CREDS=User: $adminUser | Password: $password" >> $env:GITHUB_ENV
-
-      - name: Auto-Install Paket Coding & Leecher
-        run: |
-          Write-Host "Menginstal Tools (VS Code, Node.js, Git, Npp, 7Zip) & Leecher (IDM, qBittorrent, Rclone)..."
-          choco install vscode nodejs-lts python git notepadplusplus 7zip internet-download-manager qbittorrent rclone -y --no-progress
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies xrdp
+          sudo systemctl enable xrdp
+          sudo systemctl start xrdp
+          echo "xfce4-session" > ~/.xsession
           
-          Write-Host "Menginstal PM2 (Process Manager) secara global..."
-          npm install -g pm2
-          
-          Write-Host "Mengunduh dan menyiapkan Pawno..."
-          $pawnoDir = "C:\Pawno"
-          if (-not (Test-Path $pawnoDir)) {
-              New-Item -ItemType Directory -Force -Path $pawnoDir
-              $pawnUrl = "https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip"
-              $zipPath = "$env:TEMP\pawno.zip"
-              Invoke-WebRequest -Uri $pawnUrl -OutFile $zipPath
-              Expand-Archive -Path $zipPath -DestinationPath $pawnoDir -Force
-              Remove-Item $zipPath -Force
-          }
+          # Membuat Password untuk Login RDP (User default adalah "runner")
+          echo "runner:Evan123456" | sudo chpasswd
+
+      - name: Auto-Install Paket Coding & Leecher (Versi Ubuntu)
+        run: |
+          echo "Menginstal Tools (Python, Git, Mousepad, 7Zip, FFmpeg) & Leecher (qBittorrent, Rclone, Wget)..."
+          sudo apt-get install -y python3 git mousepad p7zip-full qbittorrent rclone ffmpeg wget curl unzip
+
+          echo "Menginstal Node.js & PM2 secara global..."
+          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          sudo npm install -g pm2
+
+          echo "Mengunduh dan menyiapkan Pawno..."
+          mkdir -p ~/Pawno
+          wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip -O /tmp/pawno.zip
+          unzip -q /tmp/pawno.zip -d ~/Pawno
+          rm /tmp/pawno.zip
 
       - name: Setup WhatsApp Bot (Nave AI + Remote Control)
         run: |
-          $botDir = "C:\WABot"
-          New-Item -ItemType Directory -Force -Path $botDir
-          Set-Location -Path $botDir
+          mkdir -p ~/WABot
+          cd ~/WABot
 
-          Write-Host "Inisialisasi Project NPM..."
+          echo "Inisialisasi Project NPM..."
           npm init -y
-          npm install @whiskeysockets/baileys pino readline @google/generative-ai
+          npm install @whiskeysockets/baileys pino readline @google/generative-ai screenshot-desktop youtube-dl-exec
 
-          Write-Host "Membuat Script index.js (All-in-One Ultimate)..."
-          $botCode = @'
+          echo "Membuat file instruksi.txt..."
+          cat << 'EOF' > instruksi.txt
+          Namamu adalah Nave. Kamu adalah asisten virtual pribadi dan setia milik Bos Evan. Kamu dilarang keras mengakui bahwa kamu adalah AI, Gemini, atau buatan Google. Jika ditanya siapa kamu atau siapa pembuatmu, jawab dengan tegas bahwa kamu adalah Nave, sebuah full project buatan Bos Evan. Bicaralah dengan gaya bahasa yang santai, keren, tapi sangat hormat dan patuh kepada Bos Evan.
+          EOF
+
+          echo "Membuat Script index.js (All-in-One Ultimate)..."
+          cat << 'EOF' > index.js
           const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
           const pino = require('pino');
           const readline = require('readline');
-          const { GoogleGenerativeAI } = require('@google/generative-ai');
           const fs = require('fs');
           const { exec } = require('child_process');
+          const { GoogleGenerativeAI } = require('@google/generative-ai');
+          const screenshot = require('screenshot-desktop');
+          const youtubedl = require('youtube-dl-exec');
 
           const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-          const question = (text) => new Promise((resolve) => rl.question(text, resolve));
-
           const genAI = new GoogleGenerativeAI("AQ.Ab8RN6INcCf6WLI5nV_SrC4w33dCUiVecONxVF8eqisdTbzJ5A");
+
           let memoriPercakapan = [];
+          const kotakIngatanCepu = new Map();
+          const bosUtamaJid = '6289523274313@s.whatsapp.net'; 
+
+          const questionNormal = (text) => new Promise((resolve) => rl.question(text, resolve));
+          const questionWithTimeout = (query, timeoutMs, defaultAns) => {
+              return new Promise((resolve) => {
+                  let answered = false;
+                  const timer = setTimeout(() => {
+                      if (!answered) {
+                          answered = true;
+                          console.log(`\n⏳ Waktu habis! Memilih otomatis: Mode ${defaultAns}`);
+                          rl.write('\n');
+                          resolve(defaultAns);
+                      }
+                  }, timeoutMs);
+                  rl.question(query, (answer) => {
+                      if (!answered) {
+                          answered = true;
+                          clearTimeout(timer);
+                          resolve(answer.trim());
+                      }
+                  });
+              });
+          };
 
           async function main() {
               console.log('\n========================================');
               console.log('       PILIH MODE BOT WHATSAPP');
               console.log('========================================');
-              console.log('1. Mode Online Doang (Nahan status)');
-              console.log('2. Mode Bot AI (Project Nave + Remote Control)');
-              console.log('========================================\n');
+              console.log('1. Mode Remote Control (Semua Perintah Aktif + Stalker + Cepu)');
+              console.log('2. Mode Ultimate (Remote Control + AI Gemini Aktif)');
+              console.log('========================================');
+              console.log('⚠️ Jika 1 menit didiamkan, masuk Mode 1 otomatis.\n');
               
-              let mode = await question('Masukkan pilihan lu (1 atau 2): ');
-              if (mode !== '1' && mode !== '2') {
-                  console.log('Pilihan ga valid! Otomatis jalanin Mode 1.');
-                  mode = '1';
-              }
+              let mode = await questionWithTimeout('Masukkan pilihan lu (1 atau 2): ', 60000, '1');
+              if (mode !== '1' && mode !== '2') mode = '1';
 
               async function connectToWhatsApp() {
                   const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
                   const sock = makeWASocket({
-                      auth: state, printQRInTerminal: false, logger: pino({ level: 'silent' }), browser: ["Ubuntu", "Chrome", "20.0.04"] 
+                      auth: state, 
+                      printQRInTerminal: false, 
+                      logger: pino({ level: 'silent' }), 
+                      browser: ["Ubuntu", "Chrome", "20.0.04"] 
                   });
 
                   if (!sock.authState.creds.registered) {
                       setTimeout(async () => {
-                          const phoneNumber = await question('\nMasukkan nomor WhatsApp bot (contoh: 62812...): ');
+                          const phoneNumber = await questionNormal('\nMasukkan nomor WhatsApp bot (contoh: 62812...): ');
                           const code = await sock.requestPairingCode(phoneNumber.trim());
                           console.log(`\n🔑 KODE PAIRING LU: ${code}\n`);
                       }, 3000);
@@ -105,121 +127,261 @@ jobs:
                       } else if (connection === 'open') {
                           console.log('\n✅ WhatsApp terhubung!');
                           sock.sendPresenceUpdate('available');
-                          if (mode === '2') {
-                              console.log('🟢 Mode VIP Bos berjalan. Project Nave & Remote Control aktif!');
-                          } else {
-                              console.log('🟢 Bot berhasil menahan status Online. Silakan tinggalkan RDP.');
-                          }
+                          setTimeout(async () => {
+                              const alarmText = "🚨 *ALARM KIAMAT RDP* 🚨\n\nBos Evan, umur server Ubuntu tinggal 30 menit lagi! Segera ketik *!backup* sekarang!";
+                              await sock.sendMessage(bosUtamaJid, { text: alarmText });
+                          }, 19800000);
+                          console.log(`🟢 Mode ${mode} Berjalan dengan Aman!`);
                       }
                   });
 
                   sock.ev.on('creds.update', saveCreds);
 
-                  if (mode === '2') {
-                      sock.ev.on('messages.upsert', async (m) => {
-                          if (m.type !== 'notify') return;
-                          const msg = m.messages[0];
-                          if (!msg.message || msg.key.fromMe) return;
+                  sock.ev.on('messages.upsert', async (m) => {
+                      if (m.type !== 'notify') return;
+                      const msg = m.messages[0];
+                      if (!msg.message || msg.key.fromMe) return;
 
-                          const sender = msg.key.remoteJid;
-                          const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-                          const isBosEvan = sender.includes('6289523274313') || sender.includes('14912612995213');
+                      const sender = msg.key.remoteJid;
 
-                          if (!isBosEvan) return; 
-
-                          await sock.readMessages([msg.key]);
-                          await sock.sendPresenceUpdate('composing', sender);
-                          await new Promise(resolve => setTimeout(resolve, 1000));
-
-                          if (text) {
-                              if (text === '!ping') {
-                                  await sock.sendMessage(sender, { text: "🏓 Pong! Nave aktif dan RDP berjalan aman, Bos." }, { quoted: msg });
-                              } 
-                              else if (text === '!spek') {
-                                  exec('systeminfo | findstr /C:"Total Physical Memory" /C:"Available Physical Memory"', (error, stdout) => {
-                                      const hasil = stdout ? stdout.trim() : "Gagal ngecek spek RDP.";
-                                      sock.sendMessage(sender, { text: `💻 *Info RAM RDP:*\n\n${hasil}` }, { quoted: msg });
-                                  });
-                              }
-                              else if (text.startsWith('!cmd ')) {
-                                  const cmdArgs = text.replace('!cmd ', '');
-                                  exec(cmdArgs, (error, stdout, stderr) => {
-                                      const output = stdout || stderr || "Perintah berhasil dieksekusi tanpa output.";
-                                      sock.sendMessage(sender, { text: `⚙️ *Hasil Terminal:*\n\n${output}` }, { quoted: msg });
-                                  });
-                              }
-                              else if (text === '!backup') {
-                                  await sock.sendMessage(sender, { text: "📦 Nave sedang mengompres sesi login. Tunggu sebentar..." }, { quoted: msg });
-                                  exec('powershell Compress-Archive -Path auth_info_baileys -DestinationPath backup-sesi.zip -Force', async () => {
-                                      await sock.sendMessage(sender, {
-                                          document: fs.readFileSync('backup-sesi.zip'),
-                                          mimetype: 'application/zip',
-                                          fileName: 'backup-sesi-nave.zip'
-                                      }, { quoted: msg });
-                                  });
-                              }
-                              else {
-                                  try {
-                                      let instruksiNave = "Kamu adalah Nave, asisten pribadi Bos Evan.";
-                                      try { instruksiNave = fs.readFileSync('instruksi.txt', 'utf8'); } catch (err) {}
-
-                                      memoriPercakapan.push({ role: "user", parts: [{ text: text }] });
-                                      if (memoriPercakapan.length > 20) memoriPercakapan = memoriPercakapan.slice(memoriPercakapan.length - 20);
-
-                                      const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: instruksiNave });
-                                      const result = await model.generateContent({ contents: memoriPercakapan });
-                                      const aiReply = result.response.text();
-
-                                      memoriPercakapan.push({ role: "model", parts: [{ text: aiReply }] });
-                                      await sock.sendMessage(sender, { text: aiReply }, { quoted: msg });
-                                  } catch (error) {
-                                      memoriPercakapan = []; 
-                                      await sock.sendMessage(sender, { text: "Waduh Bos, Nave agak nge-blank bentar." }, { quoted: msg });
-                                  }
-                              }
+                      // 👁️ STALKER MODE 
+                      if (sender === 'status@broadcast') {
+                          try {
+                              const pengirimId = msg.key.participant;
+                              const namaPengirim = msg.pushName || pengirimId.split('@')[0];
+                              await sock.sendMessage(bosUtamaJid, { text: `👁️ *STALKER NAVE*\n\nBos, ada status baru nih dari: *${namaPengirim}*` });
+                              await sock.sendMessage(bosUtamaJid, { forward: msg });
+                          } catch (error) {}
+                          return;
+                      }
+                      
+                      // 🕵️‍♂️ LOGIKA CEPU (ANTI-DELETE)
+                      if (msg.message.protocolMessage && msg.message.protocolMessage.type === 0) {
+                          const keyDihapus = msg.message.protocolMessage.key;
+                          const pesanAsli = kotakIngatanCepu.get(keyDihapus.id);
+                          if (pesanAsli) {
+                              const lokasi = sender.endsWith('@g.us') ? "Grup" : "Chat Pribadi";
+                              const pengirim = keyDihapus.participant || sender;
+                              const teksCepu = `🕵️‍♂️ *LAPORAN CEPU NAVE*\n\nBos, ada yang narik pesan nih!\n*Lokasi:* ${lokasi}\n*Pelaku:* ${pengirim}\n\nIsi pesan yang dihapus:`;
+                              await sock.sendMessage(bosUtamaJid, { text: teksCepu });
+                              await sock.sendMessage(bosUtamaJid, { forward: pesanAsli });
                           }
-                          await sock.sendPresenceUpdate('paused', sender);
-                      });
-                  }
+                          return; 
+                      } else {
+                          if (msg.key.id) kotakIngatanCepu.set(msg.key.id, msg);
+                          if (kotakIngatanCepu.size > 500) kotakIngatanCepu.delete(kotakIngatanCepu.keys().next().value);
+                      }
+
+                      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+                      const isBosEvan = sender.includes('6289523274313') || sender.includes('14912612995213');
+                      
+                      // ⚠️ TEMBOK KEAMANAN (KILL-SWITCH)
+                      if (!isBosEvan) return; 
+
+                      // ⚙️ FITUR GLOBAL COMMAND
+                      await sock.readMessages([msg.key]);
+
+                      if (text === '!listcmd') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const daftar = `🚀 *LIST COMMAND NAVE (UBUNTU)* 🚀\n\n1. *!backup* : Ambil sesi login.\n2. *!cmd [cmd]* : Eksekusi Bash Linux.\n3. *!ls [path]* : Lihat isi folder.\n4. *!ambil [path]* : Download file.\n5. *!ss* : Screenshot RDP Ubuntu.\n6. *!ytmp4 [url]* : YTDL Video.\n7. *!ytmp3 [url]* : YTDL Audio.\n8. *!ping* : Cek bot.\n9. *!spek* : Cek RAM Server.\n10. *!pantau* : Live monitor RAM.`;
+                          await sock.sendMessage(sender, { text: daftar }, { quoted: msg });
+                          return;
+                      }
+
+                      if (text === '!backup') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          await sock.sendMessage(sender, { text: "📦 Mengompres sesi login..." }, { quoted: msg });
+                          exec('tar -czf backup-sesi.tar.gz auth_info_baileys', async () => {
+                              await sock.sendMessage(sender, { document: fs.readFileSync('backup-sesi.tar.gz'), mimetype: 'application/gzip', fileName: 'backup-sesi-bot.tar.gz' }, { quoted: msg });
+                              fs.unlinkSync('backup-sesi.tar.gz');
+                          });
+                          return;
+                      }
+                      
+                      if (text.startsWith('!cmd ')) {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const cmdArgs = text.replace('!cmd ', '');
+                          exec(cmdArgs, (error, stdout, stderr) => {
+                              const output = stdout || stderr || "Perintah berhasil dieksekusi tanpa output.";
+                              sock.sendMessage(sender, { text: `⚙️ *Hasil Terminal:*\n\n${output}` }, { quoted: msg });
+                          });
+                          return; 
+                      }
+
+                      if (text.startsWith('!ls ')) {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const cmdArgs = text.replace('!ls ', '');
+                          exec(`ls -la ${cmdArgs}`, (error, stdout, stderr) => {
+                              const output = stdout || stderr || "Gagal membuka direktori.";
+                              sock.sendMessage(sender, { text: `📁 *Isi Direktori:*\n\n${output}` }, { quoted: msg });
+                          });
+                          return; 
+                      }
+
+                      if (text.startsWith('!ambil ')) {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const p = text.replace('!ambil ', '');
+                          if (fs.existsSync(p)) {
+                              await sock.sendMessage(sender, { document: fs.readFileSync(p), fileName: p.split('/').pop() }, { quoted: msg });
+                          } else {
+                              await sock.sendMessage(sender, { text: "❌ File tidak ditemukan." }, { quoted: msg });
+                          }
+                          return; 
+                      }
+
+                      if (text === '!ss') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          try {
+                              const img = await screenshot();
+                              await sock.sendMessage(sender, { image: img, caption: '📸 Layar RDP Ubuntu Bos saat ini.' }, { quoted: msg });
+                          } catch (err) {
+                              await sock.sendMessage(sender, { text: "Gagal ngambil SS Bos." }, { quoted: msg });
+                          }
+                          return;
+                      } 
+                      
+                      // 🚀 YTDL EXEC NATIVE 🚀
+                      if (text.startsWith('!ytmp4 ') || text.startsWith('!ytmp3 ')) {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const url = text.split(' ')[1];
+                          const isVideo = text.startsWith('!ytmp4');
+                          const timeStamp = Date.now();
+                          const formatFile = isVideo ? 'mp4' : 'mp3';
+                          const fileName = `media_${timeStamp}.${formatFile}`;
+                          
+                          await sock.sendMessage(sender, { text: "⏳ Nave lagi narik data pakai module YTDL, ditunggu bentar Bos..." }, { quoted: msg });
+                          
+                          try {
+                              await youtubedl(url, {
+                                  output: fileName,
+                                  format: isVideo ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'bestaudio',
+                                  extractAudio: !isVideo,
+                                  audioFormat: 'mp3',
+                                  noWarnings: true,
+                                  noCheckCertificates: true
+                              });
+
+                              if (fs.existsSync(fileName)) {
+                                  const stats = fs.statSync(fileName);
+                                  const fileSizeInMB = stats.size / (1024 * 1024);
+                                  
+                                  if (fileSizeInMB > 50) {
+                                      await sock.sendMessage(sender, { text: `⚠️ File kegedean (${fileSizeInMB.toFixed(2)} MB). Nave lagi ngelempar ke Cloud, mohon bersabar Bos...` }, { quoted: msg });
+                                      
+                                      exec(`curl -T ${fileName} https://transfer.sh/${fileName}`, async (err2, stdout2) => {
+                                          if (stdout2 && stdout2.includes('http')) {
+                                              await sock.sendMessage(sender, { text: `✅ Berhasil diupload ke Cloud!\n\n🔗 Link Download Bos: ${stdout2.trim()}` }, { quoted: msg });
+                                          } else {
+                                              await sock.sendMessage(sender, { text: "❌ Gagal mengupload file ke Cloud." }, { quoted: msg });
+                                          }
+                                          if (fs.existsSync(fileName)) fs.unlinkSync(fileName); 
+                                      });
+                                  } else {
+                                      await sock.sendMessage(sender, { document: fs.readFileSync(fileName), mimetype: isVideo ? 'video/mp4' : 'audio/mpeg', fileName: fileName }, { quoted: msg });
+                                      if (fs.existsSync(fileName)) fs.unlinkSync(fileName); 
+                                  }
+                              } else {
+                                  await sock.sendMessage(sender, { text: "❌ File gagal didownload oleh YTDL." }, { quoted: msg });
+                              }
+                          } catch (err) {
+                              console.error("YTDL Error:", err);
+                              await sock.sendMessage(sender, { text: "❌ YTDL error. Kemungkinan diblokir YouTube." }, { quoted: msg });
+                          }
+                          return;
+                      }
+                      
+                      if (text === '!ping') {
+                          await sock.sendMessage(sender, { text: "🏓 Pong! Nave aktif di server Ubuntu." }, { quoted: msg });
+                          return;
+                      } 
+                      
+                      if (text === '!spek') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          exec('free -h', (e, stdout) => {
+                              sock.sendMessage(sender, { text: `💻 *Info RAM Ubuntu:*\n\n${stdout}` }, { quoted: msg });
+                          });
+                          return;
+                      }
+
+                      if (text === '!pantau') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const sentMsg = await sock.sendMessage(sender, { text: "🔄 Memulai pemantauan RAM Live..." }, { quoted: msg });
+                          let count = 0;
+                          const interval = setInterval(() => {
+                              exec('free -h | grep Mem', async (e, stdout) => {
+                                  count++;
+                                  await sock.sendMessage(sender, { text: `📊 *LIVE RDP (Update ke-${count})*\n\n${stdout}\n⏰ *Waktu:* ${new Date().toLocaleTimeString('id-ID')}`, edit: sentMsg.key });
+                                  if (count >= 12) clearInterval(interval);
+                              });
+                          }, 5000);
+                          return;
+                      }
+
+                      if (mode === '1') return; 
+
+                      // ==========================================
+                      // 🤖 MODE 2 (AI GEMINI AKTIF)
+                      // ==========================================
+                      await sock.sendPresenceUpdate('composing', sender);
+                      try {
+                          let instruksiNave = "Kamu adalah Nave, asisten pribadi Bos Evan.";
+                          try { instruksiNave = fs.readFileSync('instruksi.txt', 'utf8'); } catch (err) {}
+
+                          memoriPercakapan.push({ role: "user", parts: [{ text: text }] });
+                          if (memoriPercakapan.length > 20) memoriPercakapan = memoriPercakapan.slice(memoriPercakapan.length - 20);
+
+                          const model = genAI.getGenerativeModel({ model: "gemini-flash-latest", systemInstruction: instruksiNave });
+                          const result = await model.generateContent({ contents: memoriPercakapan });
+                          const aiReply = result.response.text();
+
+                          memoriPercakapan.push({ role: "model", parts: [{ text: aiReply }] });
+                          await sock.sendMessage(sender, { text: aiReply }, { quoted: msg });
+                      } catch (error) {
+                          memoriPercakapan = []; 
+                          await sock.sendMessage(sender, { text: "Waduh Bos, Nave nge-blank bentar." }, { quoted: msg });
+                      }
+                      await sock.sendPresenceUpdate('paused', sender);
+                  });
               }
               connectToWhatsApp();
           }
           main();
-          '@
-          Set-Content -Path "index.js" -Value $botCode -Encoding UTF8
-
-          Write-Host "Membuat file instruksi.txt..."
-          $instruksi = "Namamu adalah Nave. Kamu adalah asisten virtual pribadi dan setia milik Bos Evan. Kamu dilarang keras mengakui bahwa kamu adalah AI, Gemini, atau buatan Google. Jika ditanya siapa kamu atau siapa pembuatmu, jawab dengan tegas bahwa kamu adalah Nave, sebuah full project buatan Bos Evan. Bicaralah dengan gaya bahasa yang santai, keren, tapi sangat hormat dan patuh kepada Bos Evan."
-          Set-Content -Path "instruksi.txt" -Value $instruksi -Encoding UTF8
+          EOF
 
       - name: Install Tailscale
         run: |
-          $tsUrl = "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi"
-          $installerPath = "$env:TEMP\tailscale.msi"
-          Invoke-WebRequest -Uri $tsUrl -OutFile $installerPath
-          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
-          Remove-Item $installerPath -Force
+          curl -fsSL https://tailscale.com/install.sh | sh
 
-      - name: Establish Tailscale Connection
+      - name: Establish Tailscale Connection & Print Info
         run: |
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-$env:GITHUB_RUN_ID
-          $tsIP = $null
-          $retries = 0
-          while (-not $tsIP -and $retries -lt 10) {
-              $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-              Start-Sleep -Seconds 5
-              $retries++
-          }
-          if (-not $tsIP) { exit 1 }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-      
-      - name: Maintain Connection
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
+          
+          tsIP=""
+          retries=0
+          while [ -z "$tsIP" ] && [ $retries -lt 10 ]; do
+              tsIP=$(tailscale ip -4)
+              sleep 5
+              retries=$((retries+1))
+          done
+          
+          if [ -z "$tsIP" ]; then
+              echo "Gagal mendapatkan IP Tailscale."
+              exit 1
+          fi
+          
+          echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
+          
+          echo -e "\n=== RDP ACCESS ==="
+          echo "Address: $tsIP"
+          echo "User: runner | Password: Evan123456"
+          echo -e "==================\n"
+
+      - name: Maintain Connection & Run Bot
         run: |
-          Write-Host "`n=== RDP ACCESS ==="
-          Write-Host "Address: $env:TAILSCALE_IP"
-          Write-Host "$(echo $env:RDP_CREDS)"
-          Write-Host "==================`n"
-          while ($true) {
-              Write-Host "[$(Get-Date)] RDP Active - Use Ctrl+C in workflow to terminate"
-              Start-Sleep -Seconds 300
-          }
+          cd ~/WABot
+          pm2 start index.js --name "NaveBot"
+          
+          while true; do
+              echo "[$(date)] RDP Active - Gunakan Cancel di workflow untuk mematikan"
+              sleep 300
+          done
