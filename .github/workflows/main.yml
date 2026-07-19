@@ -9,17 +9,17 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Install Core Packages & Dependensi Dasar
+      - name: Install Core Packages
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full rclone ffmpeg wget curl unzip speedtest-cli openssh-server
           
           # Konfigurasi SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
           echo "runner:Evan123456" | sudo chpasswd
 
-      - name: Setup Node.js, PM2, & Pawno Compiler
+      - name: Setup Node.js & PM2 (Bot Environment)
         run: |
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           sudo apt-get install -y nodejs
@@ -29,12 +29,6 @@ jobs:
           wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip -O /tmp/pawno.zip
           unzip -q /tmp/pawno.zip -d ~/Pawno
           rm /tmp/pawno.zip
-
-      - name: Instalasi CasaOS (Dashboard Utama)
-        run: |
-          echo "Memulai instalasi CasaOS secara otomatis..."
-          # Script resmi CasaOS (Berjalan tanpa prompt manual)
-          curl -fsSL https://get.casaos.io | sudo bash
 
       - name: Inisialisasi Environment Bot
         run: |
@@ -49,7 +43,14 @@ jobs:
           EOF
 
           touch index.js
-          echo "// Paste isi script bot terbaru via SSH / Web Terminal CasaOS" > index.js
+          echo "// Nanti edit file ini langsung dari Code Editor di aaPanel" > index.js
+
+      - name: Instalasi aaPanel (Professional Control Panel)
+        run: |
+          echo "Memulai instalasi aaPanel..."
+          wget -O install.sh http://www.aapanel.com/script/install-ubuntu_6.0_en.sh
+          # Menjawab 'y' untuk direktori /www dan 'n' untuk SSL (agar mudah diakses via IP Tailscale)
+          echo -e "y\nn\n" | sudo bash install.sh aapanel
 
       - name: Konfigurasi Akses Tailscale
         run: |
@@ -67,22 +68,22 @@ jobs:
           
           echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
           
-          echo -e "\n=== INFORMASI AKSES SISTEM ==="
+          echo -e "\n=========================================="
+          echo "         INFORMASI AKSES SISTEM           "
+          echo "=========================================="
           echo "SSH Host   : $tsIP"
           echo "SSH User   : runner (Pass: Evan123456)"
-          echo "------------------------------"
-          echo "CasaOS UI  : http://$tsIP"
-          echo "qBittorrent: http://$tsIP:8080"
-          echo -e "==============================\n"
+          echo "------------------------------------------"
+          echo "DATA LOGIN aaPanel LU ADA DI BAWAH INI:"
+          # Memunculkan kredensial rahasia aaPanel
+          sudo bt default
+          echo "=========================================="
 
       - name: Menjalankan Sistem Utama
         run: |
           cd ~/WABot
           
-          # Memulai layanan latar belakang
-          qbittorrent-nox -d --webui-port=8080
-          
-          # Menjalankan Bot (Stand-by dengan file index.js kosong)
+          # Menjalankan Bot
           pm2 start index.js --name "NaveBot"
           
           while true; do
