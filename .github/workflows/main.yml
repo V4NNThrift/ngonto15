@@ -17,16 +17,14 @@ jobs:
       - name: Install & Setup Environment
         run: |
           sudo apt-get update
-          # Hapus docker.io biar gak bentrok, cukup pakai docker yang udah ada
           sudo apt-get install -y git p7zip-full curl wget unzip
           sudo systemctl enable --now docker
 
-      - name: Instalasi Coolify (The All-in-One Dashboard)
+      - name: Instalasi Coolify (Metode Paksa Root)
         run: |
-          echo "Menginstal Coolify..."
-          # Script resmi instalasi Coolify
-          curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
-          sleep 30
+          echo "Menginstal Coolify dengan akses root paksa..."
+          curl -fsSL https://cdn.coollabs.io/coolify/install.sh | sudo -E bash
+          sleep 60
 
       - name: Setup Bot
         run: |
@@ -38,6 +36,7 @@ jobs:
           npm init -y
           npm install @whiskeysockets/baileys pino readline @google/generative-ai
           touch index.js
+          echo "// Edit file bot lu di sini" > index.js
 
       - name: Konfigurasi Akses Tailscale
         run: |
