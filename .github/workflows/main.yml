@@ -17,22 +17,19 @@ jobs:
       - name: Install & Setup Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y docker.io docker-compose curl
+          # Hapus docker.io biar gak bentrok, cukup pakai docker yang udah ada
+          sudo apt-get install -y git p7zip-full curl wget unzip
           sudo systemctl enable --now docker
-          sudo usermod -aG docker $USER
 
       - name: Instalasi Coolify (The All-in-One Dashboard)
         run: |
           echo "Menginstal Coolify..."
           # Script resmi instalasi Coolify
           curl -fsSL https://cdn.coollabs.io/coolify/install.sh | bash
-          
-          # Tunggu sebentar buat inisialisasi Docker container-nya
           sleep 30
 
       - name: Setup Bot
         run: |
-          # Instal Node & PM2
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           sudo apt-get install -y nodejs
           sudo npm install -g pm2
