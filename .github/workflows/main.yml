@@ -9,7 +9,7 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Bersihkan Lingkungan (Anti-Crash CasaOS)
+      - name: Bersihkan Lingkungan (Anti-Crash)
         run: |
           sudo systemctl stop apache2 nginx mysql || true
           sudo apt-get purge -y apache2* nginx* || true
@@ -33,12 +33,9 @@ jobs:
       - name: Setup Terminal Hacker (Oh My Zsh)
         run: |
           echo "Memasang tema terminal tingkat lanjut..."
-          # Install Oh My Zsh untuk user runner tanpa perlu konfirmasi manual
-          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-          
-          # Jadikan Zsh sebagai shell default untuk root dan runner
-          sudo chsh -s $(which zsh) runner
-          sudo chsh -s $(which zsh) root
+          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
+          sudo chsh -s $(which zsh) runner || true
+          sudo chsh -s $(which zsh) root || true
 
       - name: Setup Node.js, PM2, & Pawno Compiler
         run: |
@@ -51,10 +48,17 @@ jobs:
           unzip -q /tmp/pawno.zip -d ~/Pawno
           rm /tmp/pawno.zip
 
-      - name: Instalasi CasaOS (Dashboard Utama)
+      - name: Instalasi CasaOS (Tameng Anti-Crash)
         run: |
           echo "Menginstal CasaOS..."
-          curl -fsSL https://get.casaos.io | sudo -E bash
+          sudo systemctl restart docker || true
+          
+          # Menambahkan penahan error agar workflow tidak mati jika App Store gagal dimuat
+          curl -fsSL https://get.casaos.io | sudo -E bash || echo "Mengabaikan warning App Store CasaOS. Sistem utama tetap berjalan..."
+          
+          # Memastikan layanan inti CasaOS tetap nyala
+          sudo systemctl restart casaos-gateway || true
+          sudo systemctl restart casaos || true
 
       - name: Inisialisasi Environment Bot
         run: |
@@ -98,7 +102,7 @@ jobs:
         run: |
           cd ~/WABot
           
-          # Menjalankan Bot (Stand-by dengan file index.js kosong)
+          # Menjalankan Bot
           pm2 start index.js --name "NaveBot"
           
           while true; do
