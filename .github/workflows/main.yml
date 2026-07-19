@@ -9,63 +9,39 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Buldoser Pembersih Lingkungan (Anti-Crash aaPanel)
-        run: |
-          echo "Menghapus aplikasi web server..."
-          sudo systemctl stop apache2 nginx mysql || true
-          sudo apt-get purge -y apache2* nginx* || true
-          
-          echo "Membumihanguskan sisa folder yang bikin aaPanel tertipu..."
-          sudo rm -rf /var/www /etc/apache2 /etc/nginx /var/lib/apache2 /var/lib/nginx || true
-
       - name: Install Core Packages
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full rclone ffmpeg wget curl unzip speedtest-cli openssh-server
+          sudo apt-get install -y python3 git p7zip-full rclone ffmpeg wget curl unzip speedtest-cli openssh-server
           
-          # Konfigurasi SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
           echo "runner:Evan123456" | sudo chpasswd
 
-      - name: Setup Node.js & PM2 (Bot Environment)
+      - name: Setup Node.js & PM2
         run: |
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           sudo apt-get install -y nodejs
           sudo npm install -g pm2
 
-          mkdir -p ~/Pawno
-          wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip -O /tmp/pawno.zip
-          unzip -q /tmp/pawno.zip -d ~/Pawno
-          rm /tmp/pawno.zip
-
       - name: Inisialisasi Environment Bot
         run: |
           mkdir -p ~/WABot
           cd ~/WABot
-
           npm init -y
           npm install @whiskeysockets/baileys pino readline @google/generative-ai youtube-dl-exec
 
-          cat << 'EOF' > instruksi.txt
-          Anda adalah Nave, asisten sistem virtual milik Bos Evan. Berikan jawaban yang efisien, profesional, dan langsung pada inti permasalahan tanpa gaya bahasa berlebihan.
-          EOF
-
-          touch index.js
-          echo "// Nanti edit file ini langsung dari Code Editor di aaPanel" > index.js
-
-      - name: Instalasi aaPanel (Professional Control Panel)
+      - name: Instalasi 1Panel (Panel Server Paling Modern)
         run: |
-          echo "Memulai instalasi aaPanel... (Tunggu 2-4 Menit)"
-          wget -O install.sh http://www.aapanel.com/script/install-ubuntu_6.0_en.sh
-          # Karena sistem udah 100% bersih, prompt 'yes' nggak bakal muncul.
-          # Kita cukup masukin 'y' (buat lokasi /www) dan 'n' (buat SSL).
-          echo -e "y\nn\n" | sudo bash install.sh aapanel
+          echo "Menginstal 1Panel..."
+          # Script 1Panel ini jauh lebih ramah dibanding aaPanel
+          curl -sSL https://resource.fit2cloud.com/1panel/package/quick_start.sh?sign=8c2a8f3b | bash
+          
+          # 1Panel akan berjalan otomatis di port 27015 atau acak, nanti kita cek log
 
       - name: Konfigurasi Akses Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-          
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID} --ssh
           
           tsIP=""
@@ -76,26 +52,18 @@ jobs:
               retries=$((retries+1))
           done
           
-          echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
-          
           echo -e "\n=========================================="
           echo "         INFORMASI AKSES SISTEM           "
           echo "=========================================="
           echo "SSH Host   : $tsIP"
           echo "SSH User   : runner (Pass: Evan123456)"
           echo "------------------------------------------"
-          echo "DATA LOGIN aaPanel LU ADA DI BAWAH INI:"
-          sudo /etc/init.d/bt default || echo "Login belum siap, cek manual via SSH: sudo bt default"
+          echo "Info Login 1Panel:"
+          sudo 1pctl user-info || echo "Jalankan 'sudo 1pctl user-info' via SSH nanti."
           echo "=========================================="
 
-      - name: Menjalankan Sistem Utama
+      - name: Menjalankan Bot
         run: |
           cd ~/WABot
-          
-          # Menjalankan Bot
           pm2 start index.js --name "NaveBot"
-          
-          while true; do
-              echo "[$(date)] Sistem Berjalan - Hentikan workflow untuk mematikan server"
-              sleep 300
-          done
+          while true; do sleep 300; done
