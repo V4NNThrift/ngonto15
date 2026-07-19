@@ -12,12 +12,16 @@ jobs:
       - name: Install Core Packages & Headless Tools
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server glances squid
           
+          # Konfigurasi SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
-          
           echo "runner:Evan123456" | sudo chpasswd
+          
+          # Konfigurasi Squid Proxy (Membuka akses untuk Tailscale)
+          sudo sed -i 's/http_access deny all/http_access allow all/' /etc/squid/squid.conf
+          sudo systemctl restart squid
 
       - name: Setup Node.js & PM2
         run: |
@@ -30,23 +34,22 @@ jobs:
           unzip -q /tmp/pawno.zip -d ~/Pawno
           rm /tmp/pawno.zip
 
-      - name: Inisialisasi Environment Bot (Pembuatan Folder & File)
+      - name: Inisialisasi Environment Bot
         run: |
           mkdir -p ~/WABot
           cd ~/WABot
 
           npm init -y
-          npm install @whiskeysockets/baileys pino readline @google/generative-ai
+          npm install @whiskeysockets/baileys pino readline @google/generative-ai youtube-dl-exec
 
           cat << 'EOF' > instruksi.txt
           Anda adalah Nave, asisten sistem virtual milik Bos Evan. Berikan jawaban yang efisien, profesional, dan langsung pada inti permasalahan tanpa gaya bahasa berlebihan.
           EOF
 
-          # Membuat file index.js kosong
           touch index.js
-          echo "// Paste isi full script bot di sini via SSH (nano index.js)" > index.js
+          echo "// Paste isi script bot terbaru via SSH" > index.js
 
-      - name: Konfigurasi Akses Tailscale (SSH & Web UI)
+      - name: Konfigurasi Akses Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
           
@@ -64,21 +67,22 @@ jobs:
           
           echo -e "\n=== INFORMASI AKSES SISTEM ==="
           echo "SSH Host: $tsIP"
-          echo "SSH User: runner (atau via Tailscale SSH)"
-          echo "SSH Pass: Evan123456"
+          echo "SSH User: runner (Pass: Evan123456)"
           echo "------------------------------"
-          echo "qBittorrent UI: http://$tsIP:8080"
-          echo "User: admin | Pass: adminadmin"
+          echo "Proxy IP : $tsIP | Port: 3128"
+          echo "qBittorrent: http://$tsIP:8080"
+          echo "Glances    : http://$tsIP:61208"
           echo -e "==============================\n"
 
       - name: Menjalankan Sistem Utama
         run: |
           cd ~/WABot
           
-          # Memulai layanan qBittorrent di latar belakang
+          # Memulai layanan latar belakang
           qbittorrent-nox -d --webui-port=8080
+          glances -w &
           
-          # Menjalankan PM2 (Akan stand-by dengan file kosong)
+          # Menjalankan Bot
           pm2 start index.js --name "NaveBot"
           
           while true; do
