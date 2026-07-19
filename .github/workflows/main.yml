@@ -9,36 +9,34 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Install Core Packages
+      - name: Setup Sistem & Bot
         run: |
           sudo apt-get update
           sudo apt-get install -y python3 git p7zip-full rclone ffmpeg wget curl unzip speedtest-cli openssh-server
           
+          # Setup SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
           echo "runner:Evan123456" | sudo chpasswd
-
-      - name: Setup Node.js & PM2
-        run: |
+          
+          # Setup Bot
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           sudo apt-get install -y nodejs
           sudo npm install -g pm2
-
-      - name: Inisialisasi Environment Bot
-        run: |
           mkdir -p ~/WABot
           cd ~/WABot
           npm init -y
           npm install @whiskeysockets/baileys pino readline @google/generative-ai youtube-dl-exec
+          touch index.js
+          echo "// Edit file ini di 1Panel" > index.js
 
-      - name: Instalasi 1Panel (Panel Server Paling Modern)
+      - name: Instalasi 1Panel (Metode Paksa)
         run: |
-          echo "Menginstal 1Panel..."
-          # Script 1Panel ini jauh lebih ramah dibanding aaPanel
-          curl -sSL https://resource.fit2cloud.com/1panel/package/quick_start.sh?sign=8c2a8f3b | bash
+          echo "Mengunduh 1Panel..."
+          curl -sSL https://resource.fit2cloud.com/1panel/package/quick_start.sh?sign=8c2a8f3b -o install.sh
+          # Menambahkan sudo di depan perintah bash agar dianggap root
+          sudo bash install.sh --yes
           
-          # 1Panel akan berjalan otomatis di port 27015 atau acak, nanti kita cek log
-
       - name: Konfigurasi Akses Tailscale
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
@@ -56,8 +54,6 @@ jobs:
           echo "         INFORMASI AKSES SISTEM           "
           echo "=========================================="
           echo "SSH Host   : $tsIP"
-          echo "SSH User   : runner (Pass: Evan123456)"
-          echo "------------------------------------------"
           echo "Info Login 1Panel:"
           sudo 1pctl user-info || echo "Jalankan 'sudo 1pctl user-info' via SSH nanti."
           echo "=========================================="
