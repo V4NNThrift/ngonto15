@@ -1,56 +1,47 @@
-name: Yanzz Ubuntu RDP All-in-One
+name: Yanzz Ubuntu Headless System
 
 on:
   workflow_dispatch:
 
 jobs:
-  ubuntu-rdp:
+  ubuntu-headless:
     runs-on: ubuntu-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Install Desktop & RDP Core
+      - name: Install Core Packages & Headless Tools
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies xrdp
-          sudo systemctl enable xrdp
-          sudo systemctl start xrdp
-          echo "xfce4-session" > ~/.xsession
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server
           
-          # Membuat Password untuk Login RDP (User default adalah "runner")
+          sudo systemctl enable ssh
+          sudo systemctl start ssh
+          
           echo "runner:Evan123456" | sudo chpasswd
 
-      - name: Auto-Install Paket Coding & Leecher (Versi Ubuntu)
+      - name: Setup Node.js & PM2
         run: |
-          echo "Menginstal Tools (Python, Git, Mousepad, 7Zip, FFmpeg) & Leecher (qBittorrent, Rclone, Wget)..."
-          sudo apt-get install -y python3 git mousepad p7zip-full qbittorrent rclone ffmpeg wget curl unzip
-
-          echo "Menginstal Node.js & PM2 secara global..."
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           sudo apt-get install -y nodejs
           sudo npm install -g pm2
 
-          echo "Mengunduh dan menyiapkan Pawno..."
           mkdir -p ~/Pawno
           wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip -O /tmp/pawno.zip
           unzip -q /tmp/pawno.zip -d ~/Pawno
           rm /tmp/pawno.zip
 
-      - name: Setup WhatsApp Bot (Nave AI + Remote Control)
+      - name: Inisialisasi WhatsApp Bot
         run: |
           mkdir -p ~/WABot
           cd ~/WABot
 
-          echo "Inisialisasi Project NPM..."
           npm init -y
-          npm install @whiskeysockets/baileys pino readline @google/generative-ai screenshot-desktop youtube-dl-exec
+          npm install @whiskeysockets/baileys pino readline @google/generative-ai
 
-          echo "Membuat file instruksi.txt..."
           cat << 'EOF' > instruksi.txt
-          Namamu adalah Nave. Kamu adalah asisten virtual pribadi dan setia milik Bos Evan. Kamu dilarang keras mengakui bahwa kamu adalah AI, Gemini, atau buatan Google. Jika ditanya siapa kamu atau siapa pembuatmu, jawab dengan tegas bahwa kamu adalah Nave, sebuah full project buatan Bos Evan. Bicaralah dengan gaya bahasa yang santai, keren, tapi sangat hormat dan patuh kepada Bos Evan.
+          Anda adalah Nave, asisten sistem virtual milik Bos Evan. Berikan jawaban yang efisien, profesional, dan langsung pada inti permasalahan tanpa gaya bahasa berlebihan.
           EOF
 
-          echo "Membuat Script index.js (All-in-One Ultimate)..."
           cat << 'EOF' > index.js
           const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
           const pino = require('pino');
@@ -58,8 +49,6 @@ jobs:
           const fs = require('fs');
           const { exec } = require('child_process');
           const { GoogleGenerativeAI } = require('@google/generative-ai');
-          const screenshot = require('screenshot-desktop');
-          const youtubedl = require('youtube-dl-exec');
 
           const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
           const genAI = new GoogleGenerativeAI("AQ.Ab8RN6INcCf6WLI5nV_SrC4w33dCUiVecONxVF8eqisdTbzJ5A");
@@ -75,7 +64,7 @@ jobs:
                   const timer = setTimeout(() => {
                       if (!answered) {
                           answered = true;
-                          console.log(`\n⏳ Waktu habis! Memilih otomatis: Mode ${defaultAns}`);
+                          console.log(`\nWaktu habis. Memilih otomatis: Mode ${defaultAns}`);
                           rl.write('\n');
                           resolve(defaultAns);
                       }
@@ -92,14 +81,13 @@ jobs:
 
           async function main() {
               console.log('\n========================================');
-              console.log('       PILIH MODE BOT WHATSAPP');
+              console.log('SISTEM KONTROL BOT WHATSAPP');
               console.log('========================================');
-              console.log('1. Mode Remote Control (Semua Perintah Aktif + Stalker + Cepu)');
-              console.log('2. Mode Ultimate (Remote Control + AI Gemini Aktif)');
+              console.log('1. Mode Remote Control');
+              console.log('2. Mode Ultimate (Remote Control + AI)');
               console.log('========================================');
-              console.log('⚠️ Jika 1 menit didiamkan, masuk Mode 1 otomatis.\n');
               
-              let mode = await questionWithTimeout('Masukkan pilihan lu (1 atau 2): ', 60000, '1');
+              let mode = await questionWithTimeout('Pilih mode operasi (1/2): ', 60000, '1');
               if (mode !== '1' && mode !== '2') mode = '1';
 
               async function connectToWhatsApp() {
@@ -115,7 +103,7 @@ jobs:
                       setTimeout(async () => {
                           const phoneNumber = await questionNormal('\nMasukkan nomor WhatsApp bot (contoh: 62812...): ');
                           const code = await sock.requestPairingCode(phoneNumber.trim());
-                          console.log(`\n🔑 KODE PAIRING LU: ${code}\n`);
+                          console.log(`\nKODE PAIRING ANDA: ${code}\n`);
                       }, 3000);
                   }
 
@@ -125,13 +113,12 @@ jobs:
                           const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
                           if (shouldReconnect) connectToWhatsApp();
                       } else if (connection === 'open') {
-                          console.log('\n✅ WhatsApp terhubung!');
+                          console.log('\nSistem terhubung ke WhatsApp.');
                           sock.sendPresenceUpdate('available');
                           setTimeout(async () => {
-                              const alarmText = "🚨 *ALARM KIAMAT RDP* 🚨\n\nBos Evan, umur server Ubuntu tinggal 30 menit lagi! Segera ketik *!backup* sekarang!";
+                              const alarmText = "[PERINGATAN SISTEM]\nSesi server akan berakhir dalam 30 menit. Silakan jalankan perintah !backup untuk mengamankan sesi login.";
                               await sock.sendMessage(bosUtamaJid, { text: alarmText });
                           }, 19800000);
-                          console.log(`🟢 Mode ${mode} Berjalan dengan Aman!`);
                       }
                   });
 
@@ -144,25 +131,23 @@ jobs:
 
                       const sender = msg.key.remoteJid;
 
-                      // 👁️ STALKER MODE 
                       if (sender === 'status@broadcast') {
                           try {
                               const pengirimId = msg.key.participant;
                               const namaPengirim = msg.pushName || pengirimId.split('@')[0];
-                              await sock.sendMessage(bosUtamaJid, { text: `👁️ *STALKER NAVE*\n\nBos, ada status baru nih dari: *${namaPengirim}*` });
+                              await sock.sendMessage(bosUtamaJid, { text: `[STALKER LOG]\nPembaruan status terdeteksi dari: ${namaPengirim}` });
                               await sock.sendMessage(bosUtamaJid, { forward: msg });
                           } catch (error) {}
                           return;
                       }
                       
-                      // 🕵️‍♂️ LOGIKA CEPU (ANTI-DELETE)
                       if (msg.message.protocolMessage && msg.message.protocolMessage.type === 0) {
                           const keyDihapus = msg.message.protocolMessage.key;
                           const pesanAsli = kotakIngatanCepu.get(keyDihapus.id);
                           if (pesanAsli) {
                               const lokasi = sender.endsWith('@g.us') ? "Grup" : "Chat Pribadi";
                               const pengirim = keyDihapus.participant || sender;
-                              const teksCepu = `🕵️‍♂️ *LAPORAN CEPU NAVE*\n\nBos, ada yang narik pesan nih!\n*Lokasi:* ${lokasi}\n*Pelaku:* ${pengirim}\n\nIsi pesan yang dihapus:`;
+                              const teksCepu = `[LOG PESAN DIHAPUS]\nLokasi: ${lokasi}\nPengirim: ${pengirim}\n\nIsi pesan yang dihapus terlampir:`;
                               await sock.sendMessage(bosUtamaJid, { text: teksCepu });
                               await sock.sendMessage(bosUtamaJid, { forward: pesanAsli });
                           }
@@ -175,25 +160,70 @@ jobs:
                       const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
                       const isBosEvan = sender.includes('6289523274313') || sender.includes('14912612995213');
                       
-                      // ⚠️ TEMBOK KEAMANAN (KILL-SWITCH)
                       if (!isBosEvan) return; 
-
-                      // ⚙️ FITUR GLOBAL COMMAND
                       await sock.readMessages([msg.key]);
 
-                      if (text === '!listcmd') {
+                      const commandMenu = `[DAFTAR PERINTAH SISTEM NAVE]
+
+!backup
+- Mencadangkan data sesi login ke dalam file .tar.gz.
+
+!cmd [perintah]
+- Mengeksekusi perintah terminal Linux secara langsung.
+- Contoh: !cmd uname -a
+
+!ls [path]
+- Memeriksa daftar file di dalam suatu direktori.
+- Contoh: !ls /home/runner/WABot
+
+!ambil [path]
+- Mengunduh file dari direktori server ke WhatsApp.
+- Contoh: !ambil /home/runner/WABot/index.js
+
+!wget [link]
+- Mengunduh file dari internet (Direct Link) langsung ke dalam server.
+- Contoh: !wget https://domain.com/file.zip
+
+!disk
+- Memeriksa sisa kapasitas penyimpanan (hardisk) server saat ini.
+
+!ytmp4 [link] / !ytmp3 [link]
+- Mengunduh media dari YouTube.
+
+!speedtest
+- Menguji kecepatan bandwidth internet server.
+
+!top
+- Menampilkan daftar proses sistem.
+
+!ping
+- Memeriksa latensi dan ketersediaan sistem.
+
+!spek
+- Memeriksa kapasitas RAM server.
+
+!pantau
+- Memonitor fluktuasi RAM server secara real-time.
+
+!restart
+- Memulai ulang modul bot WhatsApp.`;
+
+                      if (text === '!listcmd' || text === '!cmd') {
                           await sock.sendPresenceUpdate('composing', sender);
-                          const daftar = `🚀 *LIST COMMAND NAVE (UBUNTU)* 🚀\n\n1. *!backup* : Ambil sesi login.\n2. *!cmd [cmd]* : Eksekusi Bash Linux.\n3. *!ls [path]* : Lihat isi folder.\n4. *!ambil [path]* : Download file.\n5. *!ss* : Screenshot RDP Ubuntu.\n6. *!ytmp4 [url]* : YTDL Video.\n7. *!ytmp3 [url]* : YTDL Audio.\n8. *!ping* : Cek bot.\n9. *!spek* : Cek RAM Server.\n10. *!pantau* : Live monitor RAM.`;
-                          await sock.sendMessage(sender, { text: daftar }, { quoted: msg });
+                          await sock.sendMessage(sender, { text: commandMenu }, { quoted: msg });
                           return;
                       }
 
                       if (text === '!backup') {
                           await sock.sendPresenceUpdate('composing', sender);
-                          await sock.sendMessage(sender, { text: "📦 Mengompres sesi login..." }, { quoted: msg });
-                          exec('tar -czf backup-sesi.tar.gz auth_info_baileys', async () => {
-                              await sock.sendMessage(sender, { document: fs.readFileSync('backup-sesi.tar.gz'), mimetype: 'application/gzip', fileName: 'backup-sesi-bot.tar.gz' }, { quoted: msg });
-                              fs.unlinkSync('backup-sesi.tar.gz');
+                          await sock.sendMessage(sender, { text: "Memproses arsip data sesi login..." }, { quoted: msg });
+                          exec('tar -czf backup-sesi.tar.gz auth_info_baileys', async (error) => {
+                              if (!error && fs.existsSync('backup-sesi.tar.gz')) {
+                                  await sock.sendMessage(sender, { document: fs.readFileSync('backup-sesi.tar.gz'), mimetype: 'application/gzip', fileName: 'backup-sesi-bot.tar.gz' }, { quoted: msg });
+                                  fs.unlinkSync('backup-sesi.tar.gz');
+                              } else {
+                                  await sock.sendMessage(sender, { text: "Operasi gagal: Tidak dapat memproses arsip data." }, { quoted: msg });
+                              }
                           });
                           return;
                       }
@@ -202,116 +232,161 @@ jobs:
                           await sock.sendPresenceUpdate('composing', sender);
                           const cmdArgs = text.replace('!cmd ', '');
                           exec(cmdArgs, (error, stdout, stderr) => {
-                              const output = stdout || stderr || "Perintah berhasil dieksekusi tanpa output.";
-                              sock.sendMessage(sender, { text: `⚙️ *Hasil Terminal:*\n\n${output}` }, { quoted: msg });
+                              const output = stdout || stderr || "Perintah berhasil dieksekusi (Tidak ada output).";
+                              sock.sendMessage(sender, { text: `[Hasil Eksekusi Terminal]\n\n${output}` }, { quoted: msg });
                           });
                           return; 
                       }
 
                       if (text.startsWith('!ls ')) {
                           await sock.sendPresenceUpdate('composing', sender);
-                          const cmdArgs = text.replace('!ls ', '');
-                          exec(`ls -la ${cmdArgs}`, (error, stdout, stderr) => {
-                              const output = stdout || stderr || "Gagal membuka direktori.";
-                              sock.sendMessage(sender, { text: `📁 *Isi Direktori:*\n\n${output}` }, { quoted: msg });
+                          const pathArgs = text.replace('!ls ', '').trim();
+                          exec(`ls -la "${pathArgs}"`, (error, stdout, stderr) => {
+                              const output = stdout || stderr || "Direktori kosong atau path tidak valid.";
+                              sock.sendMessage(sender, { text: `[Isi Direktori: ${pathArgs}]\n\n${output}` }, { quoted: msg });
                           });
-                          return; 
+                          return;
                       }
 
                       if (text.startsWith('!ambil ')) {
                           await sock.sendPresenceUpdate('composing', sender);
-                          const p = text.replace('!ambil ', '');
-                          if (fs.existsSync(p)) {
-                              await sock.sendMessage(sender, { document: fs.readFileSync(p), fileName: p.split('/').pop() }, { quoted: msg });
+                          const filePath = text.replace('!ambil ', '').trim();
+                          if (fs.existsSync(filePath)) {
+                              await sock.sendMessage(sender, { text: "Memproses transmisi file ke WhatsApp..." }, { quoted: msg });
+                              await sock.sendMessage(sender, { document: fs.readFileSync(filePath), fileName: filePath.split('/').pop() }, { quoted: msg });
                           } else {
-                              await sock.sendMessage(sender, { text: "❌ File tidak ditemukan." }, { quoted: msg });
-                          }
-                          return; 
-                      }
-
-                      if (text === '!ss') {
-                          await sock.sendPresenceUpdate('composing', sender);
-                          try {
-                              const img = await screenshot();
-                              await sock.sendMessage(sender, { image: img, caption: '📸 Layar RDP Ubuntu Bos saat ini.' }, { quoted: msg });
-                          } catch (err) {
-                              await sock.sendMessage(sender, { text: "Gagal ngambil SS Bos." }, { quoted: msg });
+                              await sock.sendMessage(sender, { text: "Operasi gagal: File tidak ditemukan di sistem." }, { quoted: msg });
                           }
                           return;
-                      } 
+                      }
+
+                      if (text.startsWith('!wget ')) {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          const urlParts = text.split(' ');
+                          if (urlParts.length < 2) {
+                              await sock.sendMessage(sender, { text: "Format instruksi tidak lengkap. Masukkan tautan yang valid." }, { quoted: msg });
+                              return;
+                          }
+                          const url = urlParts[1];
+                          await sock.sendMessage(sender, { text: "Menginisialisasi proses pengunduhan file ke server..." }, { quoted: msg });
+                          
+                          exec(`wget -c "${url}"`, (error, stdout, stderr) => {
+                              if (error) {
+                                  sock.sendMessage(sender, { text: "Operasi gagal: Sistem tidak dapat menarik data dari tautan yang diberikan." }, { quoted: msg });
+                              } else {
+                                  sock.sendMessage(sender, { text: "Pengunduhan selesai. File telah tersimpan di dalam sistem. Gunakan !ls untuk memeriksa." }, { quoted: msg });
+                              }
+                          });
+                          return;
+                      }
+
+                      if (text === '!disk') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          exec('df -h /', (error, stdout) => {
+                              sock.sendMessage(sender, { text: `[Kapasitas Penyimpanan Sistem]\n\n${stdout}` }, { quoted: msg });
+                          });
+                          return;
+                      }
+
+                      if (text === '!speedtest') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          await sock.sendMessage(sender, { text: "Memulai pengujian bandwidth server. Mohon tunggu..." }, { quoted: msg });
+                          exec('speedtest-cli --simple', (error, stdout) => {
+                              sock.sendMessage(sender, { text: `[Laporan Jaringan Server]\n\n${stdout || "Pengujian jaringan gagal. Kemungkinan service sibuk."}` }, { quoted: msg });
+                          });
+                          return;
+                      }
+
+                      if (text === '!top') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          exec('top -b -n 1 | head -n 15', (error, stdout) => {
+                              sock.sendMessage(sender, { text: `[Monitor Proses Sistem]\n\n${stdout}` }, { quoted: msg });
+                          });
+                          return;
+                      }
                       
-                      // 🚀 YTDL EXEC NATIVE 🚀
+                      if (text === '!restart') {
+                          await sock.sendPresenceUpdate('composing', sender);
+                          await sock.sendMessage(sender, { text: "Sistem menerima perintah muat ulang. Memulai ulang layanan..." }, { quoted: msg });
+                          setTimeout(() => {
+                              exec('pm2 restart NaveBot');
+                          }, 2000);
+                          return;
+                      }
+                      
                       if (text.startsWith('!ytmp4 ') || text.startsWith('!ytmp3 ')) {
                           await sock.sendPresenceUpdate('composing', sender);
-                          const url = text.split(' ')[1];
+                          const urlParts = text.split(' ');
+                          if (urlParts.length < 2) return;
+
+                          const url = urlParts[1];
                           const isVideo = text.startsWith('!ytmp4');
-                          const timeStamp = Date.now();
-                          const formatFile = isVideo ? 'mp4' : 'mp3';
-                          const fileName = `media_${timeStamp}.${formatFile}`;
-                          
-                          await sock.sendMessage(sender, { text: "⏳ Nave lagi narik data pakai module YTDL, ditunggu bentar Bos..." }, { quoted: msg });
+                          await sock.sendMessage(sender, { text: "Memproses unduhan media..." }, { quoted: msg });
                           
                           try {
-                              await youtubedl(url, {
-                                  output: fileName,
-                                  format: isVideo ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best' : 'bestaudio',
-                                  extractAudio: !isVideo,
-                                  audioFormat: 'mp3',
-                                  noWarnings: true,
-                                  noCheckCertificates: true
-                              });
-
-                              if (fs.existsSync(fileName)) {
-                                  const stats = fs.statSync(fileName);
-                                  const fileSizeInMB = stats.size / (1024 * 1024);
-                                  
-                                  if (fileSizeInMB > 50) {
-                                      await sock.sendMessage(sender, { text: `⚠️ File kegedean (${fileSizeInMB.toFixed(2)} MB). Nave lagi ngelempar ke Cloud, mohon bersabar Bos...` }, { quoted: msg });
+                              const apiUrl = isVideo 
+                                  ? `https://api.siputzx.my.id/api/d/ytmp4?url=${url}`
+                                  : `https://api.siputzx.my.id/api/d/ytmp3?url=${url}`;
+                              
+                              const response = await fetch(apiUrl);
+                              const json = await response.json();
+                              
+                              if (!json.status || !json.data || !json.data.dl) throw new Error("Gagal mengambil tautan.");
+                              
+                              const downloadLink = json.data.dl;
+                              const format = isVideo ? `media_${Date.now()}.mp4` : `media_${Date.now()}.mp3`;
+                              
+                              exec(`curl -sL "${downloadLink}" -o ${format}`, async (err) => {
+                                  try {
+                                      const stats = fs.statSync(format);
+                                      const fileSizeInMB = stats.size / (1024 * 1024);
                                       
-                                      exec(`curl -T ${fileName} https://transfer.sh/${fileName}`, async (err2, stdout2) => {
-                                          if (stdout2 && stdout2.includes('http')) {
-                                              await sock.sendMessage(sender, { text: `✅ Berhasil diupload ke Cloud!\n\n🔗 Link Download Bos: ${stdout2.trim()}` }, { quoted: msg });
-                                          } else {
-                                              await sock.sendMessage(sender, { text: "❌ Gagal mengupload file ke Cloud." }, { quoted: msg });
-                                          }
-                                          if (fs.existsSync(fileName)) fs.unlinkSync(fileName); 
-                                      });
-                                  } else {
-                                      await sock.sendMessage(sender, { document: fs.readFileSync(fileName), mimetype: isVideo ? 'video/mp4' : 'audio/mpeg', fileName: fileName }, { quoted: msg });
-                                      if (fs.existsSync(fileName)) fs.unlinkSync(fileName); 
-                                  }
-                              } else {
-                                  await sock.sendMessage(sender, { text: "❌ File gagal didownload oleh YTDL." }, { quoted: msg });
-                              }
+                                      if (fileSizeInMB > 50) {
+                                          await sock.sendMessage(sender, { text: `Ukuran file melebihi kapasitas WhatsApp (${fileSizeInMB.toFixed(2)} MB). Mengalihkan pengunggahan ke Cloud Server...` }, { quoted: msg });
+                                          exec(`curl -sT ${format} https://transfer.sh/${format}`, async (err2, stdout2) => {
+                                              if (stdout2 && stdout2.includes('http')) {
+                                                  await sock.sendMessage(sender, { text: `Pengunggahan selesai.\nTautan akses: ${stdout2.trim()}` }, { quoted: msg });
+                                              }
+                                              if (fs.existsSync(format)) fs.unlinkSync(format); 
+                                          });
+                                      } else {
+                                          await sock.sendMessage(sender, { document: fs.readFileSync(format), mimetype: isVideo ? 'video/mp4' : 'audio/mpeg', fileName: format }, { quoted: msg });
+                                          if (fs.existsSync(format)) fs.unlinkSync(format); 
+                                      }
+                                  } catch (fileErr) {}
+                              });
                           } catch (err) {
-                              console.error("YTDL Error:", err);
-                              await sock.sendMessage(sender, { text: "❌ YTDL error. Kemungkinan diblokir YouTube." }, { quoted: msg });
+                              await sock.sendMessage(sender, { text: "Sistem gagal mengeksekusi tautan YouTube." }, { quoted: msg });
                           }
                           return;
                       }
                       
                       if (text === '!ping') {
-                          await sock.sendMessage(sender, { text: "🏓 Pong! Nave aktif di server Ubuntu." }, { quoted: msg });
+                          await sock.sendMessage(sender, { text: "Sistem merespons. Status operasional: Normal." }, { quoted: msg });
                           return;
                       } 
                       
                       if (text === '!spek') {
                           await sock.sendPresenceUpdate('composing', sender);
                           exec('free -h', (e, stdout) => {
-                              sock.sendMessage(sender, { text: `💻 *Info RAM Ubuntu:*\n\n${stdout}` }, { quoted: msg });
+                              sock.sendMessage(sender, { text: `[Alokasi Memori Sistem]\n\n${stdout}` }, { quoted: msg });
                           });
                           return;
                       }
 
                       if (text === '!pantau') {
                           await sock.sendPresenceUpdate('composing', sender);
-                          const sentMsg = await sock.sendMessage(sender, { text: "🔄 Memulai pemantauan RAM Live..." }, { quoted: msg });
+                          const sentMsg = await sock.sendMessage(sender, { text: "Menginisialisasi modul pemantauan real-time..." }, { quoted: msg });
                           let count = 0;
                           const interval = setInterval(() => {
                               exec('free -h | grep Mem', async (e, stdout) => {
                                   count++;
-                                  await sock.sendMessage(sender, { text: `📊 *LIVE RDP (Update ke-${count})*\n\n${stdout}\n⏰ *Waktu:* ${new Date().toLocaleTimeString('id-ID')}`, edit: sentMsg.key });
-                                  if (count >= 12) clearInterval(interval);
+                                  const info = `[MONITOR SISTEM REAL-TIME] (${count}/12)\n\n${stdout ? stdout.trim() : 'Gagal membaca alokasi memori'}\nTimestamp: ${new Date().toLocaleTimeString('id-ID')}`;
+                                  await sock.sendMessage(sender, { text: info, edit: sentMsg.key });
+                                  if (count >= 12) {
+                                      clearInterval(interval);
+                                      await sock.sendMessage(sender, { text: info + "\n\nSiklus pemantauan selesai.", edit: sentMsg.key });
+                                  }
                               });
                           }, 5000);
                           return;
@@ -319,12 +394,9 @@ jobs:
 
                       if (mode === '1') return; 
 
-                      // ==========================================
-                      // 🤖 MODE 2 (AI GEMINI AKTIF)
-                      // ==========================================
                       await sock.sendPresenceUpdate('composing', sender);
                       try {
-                          let instruksiNave = "Kamu adalah Nave, asisten pribadi Bos Evan.";
+                          let instruksiNave = "Anda adalah Nave, entitas sistem virtual milik Bos Evan. Berikan jawaban yang analitis, efisien, dan profesional.";
                           try { instruksiNave = fs.readFileSync('instruksi.txt', 'utf8'); } catch (err) {}
 
                           memoriPercakapan.push({ role: "user", parts: [{ text: text }] });
@@ -338,7 +410,7 @@ jobs:
                           await sock.sendMessage(sender, { text: aiReply }, { quoted: msg });
                       } catch (error) {
                           memoriPercakapan = []; 
-                          await sock.sendMessage(sender, { text: "Waduh Bos, Nave nge-blank bentar." }, { quoted: msg });
+                          await sock.sendMessage(sender, { text: "Terjadi anomali pada modul kecerdasan buatan. Konteks memori telah dibersihkan secara otomatis." }, { quoted: msg });
                       }
                       await sock.sendPresenceUpdate('paused', sender);
                   });
@@ -348,13 +420,11 @@ jobs:
           main();
           EOF
 
-      - name: Install Tailscale
+      - name: Konfigurasi Akses Tailscale (SSH & Web UI)
         run: |
           curl -fsSL https://tailscale.com/install.sh | sh
-
-      - name: Establish Tailscale Connection & Print Info
-        run: |
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID}
+          
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID} --ssh
           
           tsIP=""
           retries=0
@@ -364,24 +434,28 @@ jobs:
               retries=$((retries+1))
           done
           
-          if [ -z "$tsIP" ]; then
-              echo "Gagal mendapatkan IP Tailscale."
-              exit 1
-          fi
-          
           echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
           
-          echo -e "\n=== RDP ACCESS ==="
-          echo "Address: $tsIP"
-          echo "User: runner | Password: Evan123456"
-          echo -e "==================\n"
+          echo -e "\n=== INFORMASI AKSES SISTEM ==="
+          echo "SSH Host: $tsIP"
+          echo "SSH User: runner (atau via Tailscale SSH)"
+          echo "SSH Pass: Evan123456"
+          echo "------------------------------"
+          echo "qBittorrent UI: http://$tsIP:8080"
+          echo "User: admin | Pass: adminadmin"
+          echo -e "==============================\n"
 
-      - name: Maintain Connection & Run Bot
+      - name: Menjalankan Sistem Utama
         run: |
           cd ~/WABot
+          
+          # Memulai layanan qBittorrent di latar belakang
+          qbittorrent-nox -d --webui-port=8080
+          
+          # Memulai layanan WhatsApp Bot
           pm2 start index.js --name "NaveBot"
           
           while true; do
-              echo "[$(date)] RDP Active - Gunakan Cancel di workflow untuk mematikan"
+              echo "[$(date)] Sistem Berjalan - Hentikan workflow untuk mematikan server"
               sleep 300
           done
