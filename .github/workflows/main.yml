@@ -9,19 +9,19 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Install Core Packages & Headless Tools
+      - name: Install Core Packages & Cockpit Dashboard
         run: |
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server glances squid
+          # Menghapus proxy (squid) & glances, memasukkan cockpit
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server cockpit
           
           # Konfigurasi SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
           echo "runner:Evan123456" | sudo chpasswd
           
-          # Konfigurasi Squid Proxy (Membuka akses untuk Tailscale)
-          sudo sed -i 's/http_access deny all/http_access allow all/' /etc/squid/squid.conf
-          sudo systemctl restart squid
+          # Mengaktifkan Web Dashboard Cockpit
+          sudo systemctl enable --now cockpit.socket
 
       - name: Setup Node.js & PM2
         run: |
@@ -47,7 +47,7 @@ jobs:
           EOF
 
           touch index.js
-          echo "// Paste isi script bot terbaru via SSH" > index.js
+          echo "// Paste isi script bot terbaru via Web Terminal Cockpit atau SSH" > index.js
 
       - name: Konfigurasi Akses Tailscale
         run: |
@@ -69,18 +69,16 @@ jobs:
           echo "SSH Host: $tsIP"
           echo "SSH User: runner (Pass: Evan123456)"
           echo "------------------------------"
-          echo "Proxy IP : $tsIP | Port: 3128"
-          echo "qBittorrent: http://$tsIP:8080"
-          echo "Glances    : http://$tsIP:61208"
+          echo "qBittorrent UI : http://$tsIP:8080"
+          echo "Dashboard Admin: https://$tsIP:9090"
           echo -e "==============================\n"
 
       - name: Menjalankan Sistem Utama
         run: |
           cd ~/WABot
           
-          # Memulai layanan latar belakang
+          # Memulai layanan qBittorrent latar belakang
           qbittorrent-nox -d --webui-port=8080
-          glances -w &
           
           # Menjalankan Bot
           pm2 start index.js --name "NaveBot"
