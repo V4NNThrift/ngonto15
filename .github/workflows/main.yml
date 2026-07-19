@@ -9,21 +9,17 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Install Core Packages & Cockpit Dashboard
+      - name: Install Core Packages & Dependensi Dasar
         run: |
           sudo apt-get update
-          # Menghapus proxy (squid) & glances, memasukkan cockpit
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server cockpit
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full qbittorrent-nox rclone ffmpeg wget curl unzip speedtest-cli openssh-server
           
           # Konfigurasi SSH
           sudo systemctl enable ssh
           sudo systemctl start ssh
           echo "runner:Evan123456" | sudo chpasswd
-          
-          # Mengaktifkan Web Dashboard Cockpit
-          sudo systemctl enable --now cockpit.socket
 
-      - name: Setup Node.js & PM2
+      - name: Setup Node.js, PM2, & Pawno Compiler
         run: |
           curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
           sudo apt-get install -y nodejs
@@ -33,6 +29,12 @@ jobs:
           wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip -O /tmp/pawno.zip
           unzip -q /tmp/pawno.zip -d ~/Pawno
           rm /tmp/pawno.zip
+
+      - name: Instalasi CasaOS (Dashboard Utama)
+        run: |
+          echo "Memulai instalasi CasaOS secara otomatis..."
+          # Script resmi CasaOS (Berjalan tanpa prompt manual)
+          curl -fsSL https://get.casaos.io | sudo bash
 
       - name: Inisialisasi Environment Bot
         run: |
@@ -47,7 +49,7 @@ jobs:
           EOF
 
           touch index.js
-          echo "// Paste isi script bot terbaru via Web Terminal Cockpit atau SSH" > index.js
+          echo "// Paste isi script bot terbaru via SSH / Web Terminal CasaOS" > index.js
 
       - name: Konfigurasi Akses Tailscale
         run: |
@@ -66,21 +68,21 @@ jobs:
           echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
           
           echo -e "\n=== INFORMASI AKSES SISTEM ==="
-          echo "SSH Host: $tsIP"
-          echo "SSH User: runner (Pass: Evan123456)"
+          echo "SSH Host   : $tsIP"
+          echo "SSH User   : runner (Pass: Evan123456)"
           echo "------------------------------"
-          echo "qBittorrent UI : http://$tsIP:8080"
-          echo "Dashboard Admin: https://$tsIP:9090"
+          echo "CasaOS UI  : http://$tsIP"
+          echo "qBittorrent: http://$tsIP:8080"
           echo -e "==============================\n"
 
       - name: Menjalankan Sistem Utama
         run: |
           cd ~/WABot
           
-          # Memulai layanan qBittorrent latar belakang
+          # Memulai layanan latar belakang
           qbittorrent-nox -d --webui-port=8080
           
-          # Menjalankan Bot
+          # Menjalankan Bot (Stand-by dengan file index.js kosong)
           pm2 start index.js --name "NaveBot"
           
           while true; do
