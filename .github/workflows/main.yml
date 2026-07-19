@@ -9,12 +9,14 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Bersihkan Lingkungan (Anti-Crash aaPanel)
+      - name: Buldoser Pembersih Lingkungan (Anti-Crash aaPanel)
         run: |
-          echo "Menghapus web server bawaan GitHub yang bikin bentrok..."
+          echo "Menghapus aplikasi web server..."
           sudo systemctl stop apache2 nginx mysql || true
-          sudo apt-get purge -y apache2 nginx apache2-utils apache2-bin || true
-          sudo apt-get autoremove -y || true
+          sudo apt-get purge -y apache2* nginx* || true
+          
+          echo "Membumihanguskan sisa folder yang bikin aaPanel tertipu..."
+          sudo rm -rf /var/www /etc/apache2 /etc/nginx /var/lib/apache2 /var/lib/nginx || true
 
       - name: Install Core Packages
         run: |
@@ -56,8 +58,9 @@ jobs:
         run: |
           echo "Memulai instalasi aaPanel... (Tunggu 2-4 Menit)"
           wget -O install.sh http://www.aapanel.com/script/install-ubuntu_6.0_en.sh
-          # Mengirim konfirmasi 'yes' untuk maksa install, lalu 'y', lalu 'n'
-          echo -e "yes\ny\nn\ny\n" | sudo bash install.sh aapanel
+          # Karena sistem udah 100% bersih, prompt 'yes' nggak bakal muncul.
+          # Kita cukup masukin 'y' (buat lokasi /www) dan 'n' (buat SSL).
+          echo -e "y\nn\n" | sudo bash install.sh aapanel
 
       - name: Konfigurasi Akses Tailscale
         run: |
