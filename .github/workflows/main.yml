@@ -1,4 +1,4 @@
-name: Yanzz Windows VPS System
+name: Yanzz Windows VPS System (Streaming Edition)
 
 on:
   workflow_dispatch:
@@ -9,6 +9,9 @@ jobs:
     timeout-minutes: 3600
 
     steps:
+      - name: Set Timezone ke Indonesia (WIB)
+        run: Set-TimeZone -Id "SE Asia Standard Time"
+
       - name: Konfigurasi Password Akun RDP
         run: net user runneradmin Evan123456
 
@@ -19,30 +22,57 @@ jobs:
       - name: Install PM2 Global
         run: npm install -g pm2
 
-      - name: Install Software (Firefox, OBS Studio, VS Code)
+      - name: Install Software (Firefox, OBS, VS Code, FFmpeg, VB-Cable)
         run: |
-          # Menggunakan Chocolatey untuk auto-install software
           choco install firefox -y
           choco install obs-studio -y
           choco install vscode -y
+          choco install ffmpeg -y
+          choco install vb-cable -y
 
-      - name: Install Python & Glances (Web Monitor)
+      - name: Optimasi Windows untuk Streaming (High Performance)
         run: |
-          # Install Glances beserta dependensi web server-nya
-          pip install glances fastapi uvicorn
+          # Paksa CPU masuk ke mode High Performance
+          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           
-          # Menjalankan Glances Web Server di latar belakang
-          Start-Process -NoNewWindow -FilePath "glances" -ArgumentList "-w"
+          # Matiin semua animasi dan efek visual Windows (Biar CPU fokus ke FFmpeg/OBS)
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
+          reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
+
+      - name: Buat Script Auto-Stream FFmpeg di Desktop
+        run: |
+          $batContent = @"
+          @echo off
+          title Yanzz Auto-Stream FFmpeg
+          color 0A
+          echo ===================================================
+          echo         AUTO STREAMING YOUTUBE VIA FFMPEG
+          echo ===================================================
+          echo.
+          set /p video_path="1. Masukkan lokasi file video (contoh: C:\video.mp4) : "
+          set /p stream_key="2. Masukkan Stream Key YouTube lu                  : "
+          echo.
+          echo [!] Memulai streaming... Jangan tutup jendela ini!
+          echo [!] Tekan CTRL+C jika ingin mematikan live streaming.
+          echo.
+          ffmpeg -stream_loop -1 -re -i "%video_path%" -c:v copy -c:a aac -f flv rtmp://a.rtmp.youtube.com/live2/%stream_key%
+          pause
+          "@
+          # Menyimpan script langsung ke Desktop Public agar muncul di layar RDP
+          New-Item -Path "C:\Users\Public\Desktop\Mulai_Streaming.bat" -ItemType File -Value $batContent -Force
+
+      - name: Install Windows Admin Center (Web Dashboard)
+        run: |
+          Invoke-WebRequest -Uri "https://aka.ms/WACDownload" -OutFile "WAC.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList "/i WAC.msi /qn /L*v wac_log.txt SME_PORT=6516 SSL_CERTIFICATE_OPTION=generate"
+          New-NetFirewallRule -DisplayName "WAC Web" -Direction Inbound -LocalPort 6516 -Protocol TCP -Action Allow
 
       - name: Setup Jaringan Tailscale
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
           Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
           
-          # Menghubungkan ke Tailscale
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-windows-${env:GITHUB_RUN_ID}
-          
-          # Mengambil IP Tailscale
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           
           Write-Host ""
@@ -51,8 +81,8 @@ jobs:
           Write-Host "Username           : runneradmin"
           Write-Host "Password           : Evan123456"
           Write-Host "-----------------------------------"
-          Write-Host "Web Monitor (Buka di Browser) :"
-          Write-Host "http://$($TS_IP):61208"
+          Write-Host "Windows Admin Center (Web Monitor) :"
+          Write-Host "https://$($TS_IP):6516"
           Write-Host "==================================="
           Write-Host ""
 
