@@ -9,18 +9,28 @@ jobs:
     timeout-minutes: 3600
 
     steps:
-      - name: Konfigurasi Password Akun
+      - name: Konfigurasi Password Akun RDP
         run: net user runneradmin Evan123456
 
       - name: Install Node.js & PM2 (Bot Environment)
         uses: actions/setup-node@v3
         with:
           node-version: '20'
-      - run: npm install -g pm2
+      - name: Install PM2 Global
+        run: npm install -g pm2
+
+      - name: Install Software (Firefox, OBS Studio, VS Code)
+        run: |
+          # Menggunakan Chocolatey untuk auto-install software
+          choco install firefox -y
+          choco install obs-studio -y
+          choco install vscode -y
 
       - name: Install Python & Glances (Web Monitor)
         run: |
-          pip install glances
+          # Install Glances beserta dependensi web server-nya
+          pip install glances fastapi uvicorn
+          
           # Menjalankan Glances Web Server di latar belakang
           Start-Process -NoNewWindow -FilePath "glances" -ArgumentList "-w"
 
@@ -48,5 +58,5 @@ jobs:
 
       - name: Menahan Server Tetap Hidup
         run: |
-          Write-Host "Server berhasil berjalan. Hentikan workflow untuk mematikan."
+          Write-Host "Server berhasil berjalan. Hentikan workflow di GitHub untuk mematikan."
           ping -t 127.0.0.1 > $null
