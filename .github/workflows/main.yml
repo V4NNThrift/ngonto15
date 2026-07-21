@@ -1,4 +1,4 @@
-name: Yanzz Windows VPS System (Super Stream Edition)
+name: Yanzz Windows VPS System (Ultimate Bot Edition)
 
 on:
   workflow_dispatch:
@@ -27,81 +27,161 @@ jobs:
           choco install ffmpeg -y
           choco install vb-cable -y
 
-      - name: Optimasi Windows & Buat Shortcut Desktop
+      - name: Optimasi Windows (Mode Super Ringan)
         run: |
-          # 1. BIKIN SCRIPT MULAI STREAMING
-          $streamBat = @"
-          @echo off
-          title Yanzz Auto-Stream FFmpeg
-          color 0A
-          echo ===================================================
-          echo         AUTO STREAMING YOUTUBE VIA FFMPEG
-          echo ===================================================
-          echo.
-          set /p video_path="Masukkan lokasi file video (contoh: C:\video.mp4) : "
-          echo.
-          echo [!] Memulai streaming... Jangan tutup jendela ini!
-          echo [!] Tekan CTRL+C jika ingin mematikan live streaming.
-          echo.
-          ffmpeg -stream_loop -1 -re -i "%video_path%" -c:v copy -c:a aac -f flv "rtmp://a.rtmp.youtube.com/live2/4j6v-2k86-xpgw-a5y3-2qpk"
-          pause
-          "@
-          New-Item -Path "C:\Users\Public\Desktop\Mulai_Streaming.bat" -ItemType File -Value $streamBat -Force
-
-          # 2. BIKIN SCRIPT MODE PERFORMA SUPER
-          $performaBat = @"
-          @echo off
-          title Mode Performa Super RDP
-          color 0C
-          echo ===================================================
-          echo          MENERAPKAN MODE SUPER RINGAN...
-          echo ===================================================
-          echo.
-          echo [1] Mengubah wallpaper menjadi hitam pekat...
           reg add "HKEY_CURRENT_USER\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f >nul
           reg add "HKEY_CURRENT_USER\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f >nul
-          
-          echo [2] Mematikan semua efek animasi Windows...
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f >nul
-          
-          echo [3] Mengaktifkan Mode High Performance CPU...
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c >nul
-          
-          echo [4] Merestart antarmuka Windows...
-          taskkill /f /im explorer.exe >nul
-          start explorer.exe
-          echo.
-          echo SELESAI! RDP sekarang berada dalam performa maksimal.
-          pause
-          "@
-          New-Item -Path "C:\Users\Public\Desktop\Mode_Performa_Super.bat" -ItemType File -Value $performaBat -Force
-
-      - name: Install Windows Admin Center (Web Dashboard)
-        run: |
-          Invoke-WebRequest -Uri "https://aka.ms/WACDownload" -OutFile "WAC.msi"
-          Start-Process msiexec.exe -Wait -ArgumentList "/i WAC.msi /qn /L*v wac_log.txt SME_PORT=6516 SSL_CERTIFICATE_OPTION=generate"
-          New-NetFirewallRule -DisplayName "WAC Web" -Direction Inbound -LocalPort 6516 -Protocol TCP -Action Allow
 
       - name: Setup Jaringan Tailscale
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
           Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
-          
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-windows-${env:GITHUB_RUN_ID}
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          echo "TS_IP=$TS_IP" >> $env:GITHUB_ENV
+
+      - name: Merakit & Menyalakan Telegram Bot VIP (Full Otak)
+        run: |
+          mkdir C:\TelegramBot
+          cd C:\TelegramBot
+          npm init -y
+          npm install node-telegram-bot-api
           
-          Write-Host ""
-          Write-Host "=== INFORMASI AKSES VPS WINDOWS ==="
-          Write-Host "IP RDP / Tailscale : $TS_IP"
-          Write-Host "Username           : runneradmin"
-          Write-Host "Password           : Evan123456"
-          Write-Host "-----------------------------------"
-          Write-Host "Windows Admin Center (Web Monitor) :"
-          Write-Host "https://$($TS_IP):6516"
-          Write-Host "==================================="
-          Write-Host ""
+          $botCode = @"
+          const TelegramBot = require('node-telegram-bot-api');
+          const { spawn } = require('child_process');
+          const os = require('os');
+          
+          const token = '${{ secrets.TELEGRAM_TOKEN }}';
+          const myChatId = '${{ secrets.TELEGRAM_CHAT_ID }}';
+          const streamKey = '0ahd-k6zv-xuez-ww2r-4mjf';
+          const tsIP = '${{ env.TS_IP }}';
+          
+          const bot = new TelegramBot(token, {polling: true});
+          let ffmpegProcess = null;
+          let botState = 'idle'; // Status: idle, wait_local, wait_link
+          
+          const menuUtama = {
+              reply_markup: {
+                  inline_keyboard: [
+                      [{ text: '▶️ Mulai Streaming', callback_data: 'menu_start' }],
+                      [{ text: '🛑 Stop Streaming', callback_data: 'stop_stream' }],
+                      [{ text: '📊 Cek Status Server', callback_data: 'cek_status' }]
+                  ]
+              },
+              parse_mode: 'Markdown'
+          };
+          
+          const menuSumber = {
+              reply_markup: {
+                  inline_keyboard: [
+                      [{ text: '📁 Dari File RDP (Lokal)', callback_data: 'src_local' }],
+                      [{ text: '🌐 Dari Link (Drive/Web)', callback_data: 'src_link' }],
+                      [{ text: '🔙 Batal / Kembali', callback_data: 'cancel' }]
+                  ]
+              },
+              parse_mode: 'Markdown'
+          };
+          
+          bot.sendMessage(myChatId, '🚀 *VPS YANZZ BERHASIL ONLINE!*' +
+            '\n\n🌐 *IP Tailscale:* ' + tsIP + 
+            '\n👤 *User:* runneradmin\n🔑 *Pass:* Evan123456' +
+            '\n\n🤖 *Sistem Kontrol VIP Aktif!*' +
+            '\nPilih menu di bawah untuk mengontrol server lu:', menuUtama);
+          
+          bot.on('callback_query', (query) => {
+              if(query.message.chat.id.toString() !== myChatId) return;
+              const action = query.data;
+              
+              if (action === 'menu_start') {
+                  botState = 'idle';
+                  bot.editMessageText('Pilih sumber bahan video lu, Bos:', {
+                      chat_id: myChatId,
+                      message_id: query.message.message_id,
+                      reply_markup: menuSumber.reply_markup
+                  });
+              } else if (action === 'src_local') {
+                  botState = 'wait_local';
+                  bot.sendMessage(myChatId, '📁 *Kirim lokasi file di RDP*\n(Contoh ngetiknya: C:\\video.mp4)', {parse_mode: 'Markdown'});
+              } else if (action === 'src_link') {
+                  botState = 'wait_link';
+                  bot.sendMessage(myChatId, '🌐 *Kirim Direct Link atau Link Google Drive lu:*', {parse_mode: 'Markdown'});
+              } else if (action === 'cancel') {
+                  botState = 'idle';
+                  bot.editMessageText('🤖 *Kembali ke Menu Utama.*', {
+                      chat_id: myChatId,
+                      message_id: query.message.message_id,
+                      reply_markup: menuUtama.reply_markup,
+                      parse_mode: 'Markdown'
+                  });
+              } else if (action === 'stop_stream') {
+                  if(ffmpegProcess) {
+                      ffmpegProcess.kill();
+                      ffmpegProcess = null;
+                      bot.sendMessage(myChatId, '🛑 *Streaming dimatikan secara paksa.*', menuUtama);
+                  } else {
+                      bot.sendMessage(myChatId, '⚠️ Tidak ada streaming yang sedang berjalan saat ini.', menuUtama);
+                  }
+              } else if (action === 'cek_status') {
+                  const freeRam = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
+                  const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
+                  const uptimeHours = (os.uptime() / 3600).toFixed(1);
+                  const streamStatus = ffmpegProcess ? '🟢 SEDANG LIVE' : '🔴 MATI (IDLE)';
+                  
+                  const statusMsg = '📊 *STATUS SERVER SAAT INI*' +
+                                    '\n\n🎥 *Status Stream:* ' + streamStatus +
+                                    '\n⏱️ *Uptime Mesin:* ' + uptimeHours + ' Jam' +
+                                    '\n🧠 *Sisa RAM:* ' + freeRam + ' GB / ' + totalRam + ' GB' +
+                                    '\n⚙️ *CPU Cores:* ' + os.cpus().length + ' Core';
+                                    
+                  bot.sendMessage(myChatId, statusMsg, menuUtama);
+              }
+              bot.answerCallbackQuery(query.id);
+          });
+          
+          bot.on('message', (msg) => {
+              if(msg.chat.id.toString() !== myChatId) return;
+              
+              if((botState === 'wait_local' || botState === 'wait_link') && msg.text) {
+                  const videoPath = msg.text;
+                  botState = 'idle';
+                  bot.sendMessage(myChatId, '⏳ Memproses video & menyambungkan ke YouTube...');
+                  
+                  if(ffmpegProcess) ffmpegProcess.kill();
+                  
+                  ffmpegProcess = spawn('ffmpeg', [
+                      '-stream_loop', '-1',
+                      '-re',
+                      '-i', videoPath,
+                      '-c:v', 'copy',
+                      '-c:a', 'aac',
+                      '-f', 'flv',
+                      'rtmp://a.rtmp.youtube.com/live2/' + streamKey
+                  ]);
+                  
+                  bot.sendMessage(myChatId, '✅ *Streaming Berhasil Berjalan!* 🚀\nVideo lu sekarang udah tayang nonstop.', menuUtama);
+                  
+                  ffmpegProcess.stderr.on('data', (data) => {
+                      // FFmpeg output disembunyikan biar terminal rapi, tapi engine tetap jalan
+                  });
+                  
+                  ffmpegProcess.on('close', (code) => {
+                      bot.sendMessage(myChatId, '🛑 *Koneksi Terputus atau Streaming Berhenti Otomatis.*', menuUtama);
+                      ffmpegProcess = null;
+                  });
+              } else if (!msg.text.startsWith('/')) {
+                  bot.sendMessage(myChatId, 'Silakan gunakan tombol menu di bawah ini ya, Bos:', menuUtama);
+              }
+          });
+          "@
+          
+          Set-Content -Path "C:\TelegramBot\bot.js" -Value $botCode -Encoding UTF8
+          
+          pm2 start C:\TelegramBot\bot.js --name "TelegramRemoteVIP"
 
       - name: Menahan Server Tetap Hidup
         run: |
-          Write-Host "Server berhasil berjalan. Hentikan workflow di GitHub untuk mematikan."
+          Write-Host "Server VIP berhasil berjalan. Hentikan workflow di GitHub untuk mematikan."
           ping -t 127.0.0.1 > $null
