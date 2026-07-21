@@ -1,4 +1,4 @@
-name: Yanzz Windows VPS System (Streaming Edition)
+name: Yanzz Windows VPS System (Super Stream Edition)
 
 on:
   workflow_dispatch:
@@ -22,26 +22,15 @@ jobs:
       - name: Install PM2 Global
         run: npm install -g pm2
 
-      - name: Install Software (Firefox, OBS, VS Code, FFmpeg, VB-Cable)
+      - name: Install Software (FFmpeg & VB-Cable Saja)
         run: |
-          choco install firefox -y
-          choco install obs-studio -y
-          choco install vscode -y
           choco install ffmpeg -y
           choco install vb-cable -y
 
-      - name: Optimasi Windows untuk Streaming (High Performance)
+      - name: Optimasi Windows & Buat Shortcut Desktop
         run: |
-          # Paksa CPU masuk ke mode High Performance
-          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
-          
-          # Matiin semua animasi dan efek visual Windows (Biar CPU fokus ke FFmpeg/OBS)
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f
-          reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
-
-      - name: Buat Script Auto-Stream FFmpeg di Desktop
-        run: |
-          $batContent = @"
+          # 1. BIKIN SCRIPT MULAI STREAMING
+          $streamBat = @"
           @echo off
           title Yanzz Auto-Stream FFmpeg
           color 0A
@@ -49,17 +38,43 @@ jobs:
           echo         AUTO STREAMING YOUTUBE VIA FFMPEG
           echo ===================================================
           echo.
-          set /p video_path="1. Masukkan lokasi file video (contoh: C:\video.mp4) : "
-          set /p stream_key="2. Masukkan Stream Key YouTube lu                  : "
+          set /p video_path="Masukkan lokasi file video (contoh: C:\video.mp4) : "
           echo.
           echo [!] Memulai streaming... Jangan tutup jendela ini!
           echo [!] Tekan CTRL+C jika ingin mematikan live streaming.
           echo.
-          ffmpeg -stream_loop -1 -re -i "%video_path%" -c:v copy -c:a aac -f flv rtmp://a.rtmp.youtube.com/live2/%stream_key%
+          ffmpeg -stream_loop -1 -re -i "%video_path%" -c:v copy -c:a aac -f flv "rtmp://a.rtmp.youtube.com/live2/4j6v-2k86-xpgw-a5y3-2qpk"
           pause
           "@
-          # Menyimpan script langsung ke Desktop Public agar muncul di layar RDP
-          New-Item -Path "C:\Users\Public\Desktop\Mulai_Streaming.bat" -ItemType File -Value $batContent -Force
+          New-Item -Path "C:\Users\Public\Desktop\Mulai_Streaming.bat" -ItemType File -Value $streamBat -Force
+
+          # 2. BIKIN SCRIPT MODE PERFORMA SUPER
+          $performaBat = @"
+          @echo off
+          title Mode Performa Super RDP
+          color 0C
+          echo ===================================================
+          echo          MENERAPKAN MODE SUPER RINGAN...
+          echo ===================================================
+          echo.
+          echo [1] Mengubah wallpaper menjadi hitam pekat...
+          reg add "HKEY_CURRENT_USER\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f >nul
+          reg add "HKEY_CURRENT_USER\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f >nul
+          
+          echo [2] Mematikan semua efek animasi Windows...
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f >nul
+          
+          echo [3] Mengaktifkan Mode High Performance CPU...
+          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c >nul
+          
+          echo [4] Merestart antarmuka Windows...
+          taskkill /f /im explorer.exe >nul
+          start explorer.exe
+          echo.
+          echo SELESAI! RDP sekarang berada dalam performa maksimal.
+          pause
+          "@
+          New-Item -Path "C:\Users\Public\Desktop\Mode_Performa_Super.bat" -ItemType File -Value $performaBat -Force
 
       - name: Install Windows Admin Center (Web Dashboard)
         run: |
