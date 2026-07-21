@@ -1,127 +1,52 @@
-name: Yanzz Ubuntu Headless System
+name: Yanzz Windows VPS System
 
 on:
   workflow_dispatch:
 
 jobs:
-  ubuntu-headless:
-    runs-on: ubuntu-22.04
+  windows-vps:
+    runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
-      - name: Bersihkan Lingkungan (Anti-Crash)
+      - name: Konfigurasi Password Akun
+        run: net user runneradmin Evan123456
+
+      - name: Install Node.js & PM2 (Bot Environment)
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - run: npm install -g pm2
+
+      - name: Install Python & Glances (Web Monitor)
         run: |
-          sudo systemctl stop apache2 nginx mysql || true
-          sudo apt-get purge -y apache2* nginx* || true
-          sudo rm -rf /var/www /etc/apache2 /etc/nginx || true
+          pip install glances
+          # Menjalankan Glances Web Server di latar belakang
+          Start-Process -NoNewWindow -FilePath "glances" -ArgumentList "-w"
 
-      - name: Install Core Packages & Set Timezone
+      - name: Setup Jaringan Tailscale
         run: |
-          sudo apt-get update
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
+          Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
           
-          # Paket murni tanpa bloatware (termasuk Zsh, SQLite3, dependensi stiker, dan scrot buat screenshot)
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full ffmpeg wget curl unzip speedtest-cli openssh-server imagemagick webp sqlite3 libsqlite3-dev btop zsh scrot
+          # Menghubungkan ke Tailscale
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-windows-${env:GITHUB_RUN_ID}
           
-          # Set zona waktu ke WIB (Waktu Indonesia Barat)
-          sudo timedatectl set-timezone Asia/Jakarta
+          # Mengambil IP Tailscale
+          $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           
-          # Konfigurasi SSH
-          sudo systemctl enable ssh
-          sudo systemctl start ssh
-          echo "runner:Evan123456" | sudo chpasswd
+          Write-Host ""
+          Write-Host "=== INFORMASI AKSES VPS WINDOWS ==="
+          Write-Host "IP RDP / Tailscale : $TS_IP"
+          Write-Host "Username           : runneradmin"
+          Write-Host "Password           : Evan123456"
+          Write-Host "-----------------------------------"
+          Write-Host "Web Monitor (Buka di Browser) :"
+          Write-Host "http://$($TS_IP):61208"
+          Write-Host "==================================="
+          Write-Host ""
 
-      - name: Setup Terminal Hacker (Oh My Zsh)
+      - name: Menahan Server Tetap Hidup
         run: |
-          echo "Memasang tema terminal tingkat lanjut..."
-          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
-          sudo chsh -s $(which zsh) runner || true
-          sudo chsh -s $(which zsh) root || true
-
-      - name: Install Desktop GUI (XFCE4 & XRDP)
-        run: |
-          echo "Menginstal Desktop XFCE4 dan XRDP..."
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies xrdp
-          
-          # Konfigurasi XRDP agar menggunakan XFCE4
-          echo xfce4-session > ~/.xsession
-          sudo cp ~/.xsession /etc/skel/
-          sudo sed -i 's/3389/3389/g' /etc/xrdp/xrdp.ini
-          sudo adduser runner ssl-cert
-          
-          # Jalankan layanan XRDP
-          sudo systemctl enable xrdp
-          sudo systemctl restart xrdp
-
-      - name: Setup Node.js, PM2, & Pawno Compiler
-        run: |
-          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-          sudo npm install -g pm2
-
-          mkdir -p ~/Pawno
-          wget -q https://github.com/pawn-lang/compiler/releases/download/v3.10.10/pawnc-3.10.10-windows.zip -O /tmp/pawno.zip
-          unzip -q /tmp/pawno.zip -d ~/Pawno
-          rm /tmp/pawno.zip
-
-      - name: Instalasi CasaOS (Tameng Anti-Crash)
-        run: |
-          echo "Menginstal CasaOS..."
-          sudo systemctl restart docker || true
-          
-          # Menambahkan penahan error agar workflow tidak mati jika App Store gagal dimuat
-          curl -fsSL https://get.casaos.io | sudo -E bash || echo "Mengabaikan warning App Store CasaOS. Sistem utama tetap berjalan..."
-          
-          # Memastikan layanan inti CasaOS tetap nyala
-          sudo systemctl restart casaos-gateway || true
-          sudo systemctl restart casaos || true
-
-      - name: Inisialisasi Environment Bot
-        run: |
-          mkdir -p ~/WABot
-          cd ~/WABot
-
-          npm init -y
-          npm install @whiskeysockets/baileys pino readline @google/generative-ai youtube-dl-exec
-
-          cat << 'EOF' > instruksi.txt
-          Anda adalah Nave, asisten sistem virtual milik Bos Evan. Berikan jawaban yang efisien, profesional, dan langsung pada inti permasalahan tanpa gaya bahasa berlebihan.
-          EOF
-
-          touch index.js
-          echo "// Paste isi script bot terbaru via SSH atau Web Terminal CasaOS" > index.js
-
-      - name: Konfigurasi Akses Tailscale
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-runner-${GITHUB_RUN_ID} --ssh
-          
-          tsIP=""
-          retries=0
-          while [ -z "$tsIP" ] && [ $retries -lt 10 ]; do
-              tsIP=$(tailscale ip -4)
-              sleep 5
-              retries=$((retries+1))
-          done
-          
-          echo "TAILSCALE_IP=$tsIP" >> $GITHUB_ENV
-          
-          echo -e "\n=== INFORMASI AKSES SISTEM ==="
-          echo "SSH Host   : $tsIP"
-          echo "SSH User   : runner (Pass: Evan123456)"
-          echo "RDP Host   : $tsIP:3389"
-          echo "------------------------------"
-          echo "CasaOS UI  : http://$tsIP"
-          echo -e "==============================\n"
-
-      - name: Menjalankan Sistem Utama
-        run: |
-          cd ~/WABot
-          
-          # Menjalankan Bot
-          pm2 start index.js --name "NaveBot"
-          
-          while true; do
-              echo "[$(date)] Sistem Berjalan - Hentikan workflow untuk mematikan server"
-              sleep 300
-          done
+          Write-Host "Server berhasil berjalan. Hentikan workflow untuk mematikan."
+          ping -t 127.0.0.1 > $null
