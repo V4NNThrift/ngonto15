@@ -5,7 +5,7 @@ on:
 
 jobs:
   ubuntu-headless:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 3600
 
     steps:
@@ -19,8 +19,8 @@ jobs:
         run: |
           sudo apt-get update
           
-          # Paket murni tanpa bloatware (termasuk Zsh, SQLite3, dan dependensi stiker)
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full ffmpeg wget curl unzip speedtest-cli openssh-server imagemagick webp sqlite3 libsqlite3-dev btop zsh
+          # Paket murni tanpa bloatware (termasuk Zsh, SQLite3, dependensi stiker, dan scrot buat screenshot)
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y python3 git p7zip-full ffmpeg wget curl unzip speedtest-cli openssh-server imagemagick webp sqlite3 libsqlite3-dev btop zsh scrot
           
           # Set zona waktu ke WIB (Waktu Indonesia Barat)
           sudo timedatectl set-timezone Asia/Jakarta
@@ -36,6 +36,21 @@ jobs:
           sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended || true
           sudo chsh -s $(which zsh) runner || true
           sudo chsh -s $(which zsh) root || true
+
+      - name: Install Desktop GUI (XFCE4 & XRDP)
+        run: |
+          echo "Menginstal Desktop XFCE4 dan XRDP..."
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y xfce4 xfce4-goodies xrdp
+          
+          # Konfigurasi XRDP agar menggunakan XFCE4
+          echo xfce4-session > ~/.xsession
+          sudo cp ~/.xsession /etc/skel/
+          sudo sed -i 's/3389/3389/g' /etc/xrdp/xrdp.ini
+          sudo adduser runner ssl-cert
+          
+          # Jalankan layanan XRDP
+          sudo systemctl enable xrdp
+          sudo systemctl restart xrdp
 
       - name: Setup Node.js, PM2, & Pawno Compiler
         run: |
@@ -94,6 +109,7 @@ jobs:
           echo -e "\n=== INFORMASI AKSES SISTEM ==="
           echo "SSH Host   : $tsIP"
           echo "SSH User   : runner (Pass: Evan123456)"
+          echo "RDP Host   : $tsIP:3389"
           echo "------------------------------"
           echo "CasaOS UI  : http://$tsIP"
           echo -e "==============================\n"
