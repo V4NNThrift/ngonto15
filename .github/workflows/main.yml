@@ -42,13 +42,14 @@ jobs:
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           echo "TS_IP=$TS_IP" >> $env:GITHUB_ENV
 
-      - name: Merakit & Menyalakan Telegram Bot VIP (Full Otak)
+      - name: Merakit & Menyalakan Telegram Bot VIP (Fixed 100%)
         run: |
           mkdir C:\TelegramBot
           cd C:\TelegramBot
           npm init -y
           npm install node-telegram-bot-api
           
+          # Menggunakan kode JS polos murni tanpa simbol yang memicu error PowerShell
           $botCode = @"
           const TelegramBot = require('node-telegram-bot-api');
           const { spawn } = require('child_process');
@@ -61,7 +62,7 @@ jobs:
           
           const bot = new TelegramBot(token, {polling: true});
           let ffmpegProcess = null;
-          let botState = 'idle'; // Status: idle, wait_local, wait_link
+          let botState = 'idle';
           
           const menuUtama = {
               reply_markup: {
@@ -85,11 +86,8 @@ jobs:
               parse_mode: 'Markdown'
           };
           
-          bot.sendMessage(myChatId, '🚀 *VPS YANZZ BERHASIL ONLINE!*' +
-            '\n\n🌐 *IP Tailscale:* ' + tsIP + 
-            '\n👤 *User:* runneradmin\n🔑 *Pass:* Evan123456' +
-            '\n\n🤖 *Sistem Kontrol VIP Aktif!*' +
-            '\nPilih menu di bawah untuk mengontrol server lu:', menuUtama);
+          const welcomeMsg = '🚀 *VPS YANZZ BERHASIL ONLINE!*\n\n🌐 *IP Tailscale:* ' + tsIP + '\n👤 *User:* runneradmin\n🔑 *Pass:* Evan123456\n\n🤖 *Sistem Kontrol VIP Aktif!*\nPilih menu di bawah untuk mengontrol server lu:';
+          bot.sendMessage(myChatId, welcomeMsg, menuUtama);
           
           bot.on('callback_query', (query) => {
               if(query.message.chat.id.toString() !== myChatId) return;
@@ -104,7 +102,7 @@ jobs:
                   });
               } else if (action === 'src_local') {
                   botState = 'wait_local';
-                  bot.sendMessage(myChatId, '📁 *Kirim lokasi file di RDP*\n(Contoh ngetiknya: C:\\video.mp4)', {parse_mode: 'Markdown'});
+                  bot.sendMessage(myChatId, '📁 *Kirim lokasi file di RDP*\n(Contoh ngetiknya: C:\\\\video.mp4)', {parse_mode: 'Markdown'});
               } else if (action === 'src_link') {
                   botState = 'wait_link';
                   bot.sendMessage(myChatId, '🌐 *Kirim Direct Link atau Link Google Drive lu:*', {parse_mode: 'Markdown'});
@@ -130,11 +128,7 @@ jobs:
                   const uptimeHours = (os.uptime() / 3600).toFixed(1);
                   const streamStatus = ffmpegProcess ? '🟢 SEDANG LIVE' : '🔴 MATI (IDLE)';
                   
-                  const statusMsg = '📊 *STATUS SERVER SAAT INI*' +
-                                    '\n\n🎥 *Status Stream:* ' + streamStatus +
-                                    '\n⏱️ *Uptime Mesin:* ' + uptimeHours + ' Jam' +
-                                    '\n🧠 *Sisa RAM:* ' + freeRam + ' GB / ' + totalRam + ' GB' +
-                                    '\n⚙️ *CPU Cores:* ' + os.cpus().length + ' Core';
+                  const statusMsg = '📊 *STATUS SERVER SAAT INI*\n\n🎥 *Status Stream:* ' + streamStatus + '\n⏱️ *Uptime Mesin:* ' + uptimeHours + ' Jam\n🧠 *Sisa RAM:* ' + freeRam + ' GB / ' + totalRam + ' GB\n⚙️ *CPU Cores:* ' + os.cpus().length + ' Core';
                                     
                   bot.sendMessage(myChatId, statusMsg, menuUtama);
               }
@@ -163,9 +157,7 @@ jobs:
                   
                   bot.sendMessage(myChatId, '✅ *Streaming Berhasil Berjalan!* 🚀\nVideo lu sekarang udah tayang nonstop.', menuUtama);
                   
-                  ffmpegProcess.stderr.on('data', (data) => {
-                      // FFmpeg output disembunyikan biar terminal rapi, tapi engine tetap jalan
-                  });
+                  ffmpegProcess.stderr.on('data', (data) => {});
                   
                   ffmpegProcess.on('close', (code) => {
                       bot.sendMessage(myChatId, '🛑 *Koneksi Terputus atau Streaming Berhenti Otomatis.*', menuUtama);
@@ -179,7 +171,12 @@ jobs:
           
           Set-Content -Path "C:\TelegramBot\bot.js" -Value $botCode -Encoding UTF8
           
+          # Menyalakan bot
           pm2 start C:\TelegramBot\bot.js --name "TelegramRemoteVIP"
+          
+          # Menunggu 3 detik dan mengecek log (Untuk keamanan)
+          Start-Sleep -Seconds 3
+          pm2 logs TelegramRemoteVIP --lines 20 --nostream
 
       - name: Menahan Server Tetap Hidup
         run: |
