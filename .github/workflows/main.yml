@@ -35,7 +35,7 @@ jobs:
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f >nul
           powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c >nul
 
-- name: Setup Jaringan Tailscale
+      - name: Setup Jaringan Tailscale
         run: |
           Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
           Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
@@ -66,7 +66,7 @@ jobs:
           const ytHandle = 'Yanzz'; 
           // ====================================================
           
-          const ytLiveLink = `[https://youtube.com/@$](https://youtube.com/@$){ytHandle}/live`;
+          const ytLiveLink = `https://youtube.com/@${ytHandle}/live`;
           const tsIP = fs.readFileSync('C:\\ts_ip.txt', 'utf8').trim();
           
           let ffmpegProcess = null;
@@ -150,7 +150,7 @@ jobs:
                   '-c:v', 'copy',
                   '-c:a', 'aac',
                   '-f', 'flv',
-                  'rtmp://[a.rtmp.youtube.com/live2/](https://a.rtmp.youtube.com/live2/)' + streamKey
+                  'rtmp://a.rtmp.youtube.com/live2/' + streamKey
               ]);
               
               ffmpegProcess.on('spawn', () => {
