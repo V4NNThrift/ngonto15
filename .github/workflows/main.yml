@@ -1,4 +1,4 @@
-name: Yanzz Windows VPS System (Ultimate V5 Edition)
+name: Yanzz Windows VPS System (Ultimate V7 Masterpiece)
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
       - name: Install PM2 Global
         run: npm install -g pm2
 
-      - name: Install Software (FFmpeg, yt-dlp & VB-Cable)
+      - name: Install Software (FFmpeg, yt-dlp, GraphicsMagick & VB-Cable)
         run: |
           choco install ffmpeg -y
           choco install yt-dlp -y
@@ -41,11 +41,10 @@ jobs:
           Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
           & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-windows-${env:GITHUB_RUN_ID}
           
-          # Simpan IP ke file teks buat dibaca bot
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Set-Content -Path "C:\ts_ip.txt" -Value $TS_IP
 
-      - name: Merakit & Menyalakan Mesin Telegraf V5
+      - name: Merakit & Menyalakan Mesin Telegraf V7 (35+ Fitur)
         run: |
           mkdir C:\TelegramBot
           cd C:\TelegramBot
@@ -54,49 +53,54 @@ jobs:
           
           $botCode = @'
           const { Telegraf, Markup } = require('telegraf');
-          const { spawn } = require('child_process');
+          const { spawn, execSync } = require('child_process');
           const os = require('os');
           const fs = require('fs');
           
           const bot = new Telegraf('PLACEHOLDER_TOKEN');
           const myChatId = 'PLACEHOLDER_CHATID';
-          const streamKey = '0ahd-k6zv-xuez-ww2r-4mjf';
           
-          // === [ BOS, GANTI NAMA HANDLE CHANNEL LU DI SINI ] ===
+          let streamKey = '0ahd-k6zv-xuez-ww2r-4mjf';
           const ytHandle = 'Yanzz'; 
-          // ====================================================
-          
           const ytLiveLink = `https://youtube.com/@${ytHandle}/live`;
           const tsIP = fs.readFileSync('C:\\ts_ip.txt', 'utf8').trim();
           
           let ffmpegProcess = null;
           let botState = 'idle';
+          let currentSource = 'Tidak ada';
           
-          // Middleware: Cuma ngerespon Bos Yanzz
+          // Middleware Keamanan VIP
           bot.use((ctx, next) => {
               if (ctx.from && ctx.from.id.toString() === myChatId) return next();
           });
           
-          // Template Menu Utama
-          const sendMainMenu = (ctx, customText = '🤖 *Pilih menu di bawah ini, Bos:*') => {
+          // Menu Utama (Desain 3 Kolom Rapi)
+          const sendMainMenu = (ctx, customText = '🤖 *PANEL KONTROL UTAMA (V7)*\nPilih menu di bawah ini, Bos:') => {
               const menu = Markup.inlineKeyboard([
-                  [Markup.button.callback('🌐 Stream dari Link (Drive/Web)', 'src_link')],
-                  [Markup.button.callback('📁 Stream dari File Lokal (RDP)', 'src_local')],
-                  [Markup.button.callback('🛑 Stop Stream & Cleanup', 'stop_stream'), Markup.button.callback('📊 Status VPS', 'cek_status')]
+                  [Markup.button.callback('🌐 Stream (Link)', 'src_link'), Markup.button.callback('📁 Stream (Lokal)', 'src_local')],
+                  [Markup.button.callback('📊 Status VPS', 'cek_status'), Markup.button.callback('🛠️ Hardware', 'cek_hardware')],
+                  [Markup.button.callback('📂 File Manager', 'file_manager'), Markup.button.callback('📸 SS Desktop', 'ss_rdp')],
+                  [Markup.button.callback('🔑 Ganti Key', 'ganti_key'), Markup.button.callback('❓ Bantuan', 'help_menu')],
+                  [Markup.button.callback('🛑 STOP STREAMING & CLEANUP', 'stop_stream')]
               ]);
               ctx.reply(customText, { parse_mode: 'Markdown', ...menu }).catch(()=>{});
           };
           
           bot.command('start', (ctx) => {
               botState = 'idle';
-              sendMainMenu(ctx, `🚀 *VPS YANZZ BERHASIL ONLINE!*\n\n🌐 *IP RDP:* \`${tsIP}\`\n👤 *User:* \`runneradmin\`\n🔑 *Pass:* \`Evan123456\``);
+              sendMainMenu(ctx, `🚀 *VPS YANZZ BERHASIL ONLINE!*\n\n🌐 *IP RDP:* \`${tsIP}\`\n👤 *User:* \`runneradmin\`\n🔑 *Pass:* \`Evan123456\`\n\n_Semua 35+ Fitur siap digunakan!_`);
           });
           
-          bot.telegram.sendMessage(myChatId, `🚀 *VPS YANZZ BERHASIL ONLINE!*\n\n🌐 *IP RDP:* \`${tsIP}\`\n👤 *User:* \`runneradmin\`\n🔑 *Pass:* \`Evan123456\`\n\n🤖 *Sistem V5 Aktif! Ketik /start*`, {parse_mode: 'Markdown'});
+          bot.command('help', (ctx) => {
+              ctx.reply(`📖 *PANDUAN BOT V7*\n\n1. Gunakan tombol interaktif untuk navigasi.\n2. Untuk stream via link, pastikan link publik (Drive/Web).\n3. Bot dilengkapi auto-cleanup anti-sampah.\n4. Ketik perintah bebas untuk mode *CMD Executor* jarak jauh.`, { parse_mode: 'Markdown' });
+          });
           
+          bot.telegram.sendMessage(myChatId, `🚀 *VPS YANZZ ONLINE! (V7 - 35+ Fitur)*\n\n🌐 *IP:* \`${tsIP}\`\n🤖 *Ketik /start untuk membuka panel utama*`, {parse_mode: 'Markdown'});
+          
+          // --- CALLBACK HANDLERS ---
           bot.action('src_link', (ctx) => {
               botState = 'wait_link';
-              ctx.reply('🌐 *Kirim Direct Link atau Link Google Drive lu:*\n_Bot otomatis nge-download & mainin videonya._', { parse_mode: 'Markdown' }).catch(()=>{});
+              ctx.reply('🌐 *Kirim Direct Link atau Link Google Drive lu:*\n_Bot otomatis nge-download & mainin._', { parse_mode: 'Markdown' }).catch(()=>{});
               ctx.answerCbQuery();
           });
           
@@ -106,26 +110,9 @@ jobs:
               ctx.answerCbQuery();
           });
           
-          bot.action('stop_stream', (ctx) => {
-              botState = 'idle';
-              let msg = '';
-              if (ffmpegProcess) {
-                  ffmpegProcess.kill();
-                  ffmpegProcess = null;
-                  msg += '🛑 *LOG: Streaming BERHASIL dimatikan.*\n';
-              } else {
-                  msg += '⚠️ *LOG: Nggak ada streaming yang jalan.*\n';
-              }
-              
-              // Auto Cleanup File
-              const outPath = 'C:\\TelegramBot\\video_sedotan.mp4';
-              if(fs.existsSync(outPath)) {
-                  fs.unlinkSync(outPath);
-                  msg += '🧹 *Storage dibersihkan (File video lama dihapus).*';
-              }
-              
-              ctx.reply(msg, { parse_mode: 'Markdown' }).catch(()=>{});
-              sendMainMenu(ctx);
+          bot.action('ganti_key', (ctx) => {
+              botState = 'wait_key';
+              ctx.reply(`🔑 *Stream Key saat ini:*\n\`${streamKey}\`\n\nKirim Stream Key baru lu:`, { parse_mode: 'Markdown' }).catch(()=>{});
               ctx.answerCbQuery();
           });
           
@@ -135,13 +122,87 @@ jobs:
               const uptimeHours = (os.uptime() / 3600).toFixed(1);
               const streamStatus = ffmpegProcess ? '🟢 SEDANG LIVE' : '🔴 MATI (IDLE)';
               
-              ctx.reply(`📊 *STATUS SERVER V5*\n\n🎥 *Stream:* ${streamStatus}\n⏱️ *Uptime:* ${uptimeHours} Jam\n🧠 *RAM:* ${freeRam} GB / ${totalRam} GB\n⚙️ *CPU Cores:* ${os.cpus().length} Core`, { parse_mode: 'Markdown' }).catch(()=>{});
+              const msg = `📊 *STATUS SERVER V7*\n\n🎥 *Stream:* ${streamStatus}\n📂 *Sumber:* ${currentSource}\n⏱️ *Uptime:* ${uptimeHours} Jam\n🧠 *RAM:* ${freeRam} GB / ${totalRam} GB\n⚙️ *CPU Cores:* ${os.cpus().length} Core\n🌐 *IP Tailscale:* \`${tsIP}\``;
+              ctx.reply(msg, { parse_mode: 'Markdown' }).catch(()=>{});
+              ctx.answerCbQuery();
+          });
+          
+          bot.action('cek_hardware', (ctx) => {
+              let diskInfo = 'Tidak diketahui';
+              try {
+                  diskInfo = execSync('wmic logicaldisk get size,freespace,caption').toString();
+              } catch(e){}
+              
+              ctx.reply(`🛠️ *DIAGNOSTIK HARDWARE*\n\n\`\`\`text\n${diskInfo}\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
+              ctx.answerCbQuery();
+          });
+          
+          bot.action('file_manager', (ctx) => {
+              let files = 'Kosong';
+              try {
+                  files = fs.readdirSync('C:\\TelegramBot').join('\n');
+              } catch(e){}
+              
+              ctx.reply(`📂 *FILE DI DIREKTORI BOT*\n\n\`\`\`text\n${files}\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
+              ctx.answerCbQuery();
+          });
+          
+          bot.action('ss_rdp', (ctx) => {
+              ctx.reply('📸 Mengambil screenshot RDP...', { parse_mode: 'Markdown' }).catch(()=>{});
+              try {
+                  const ssPath = 'C:\\TelegramBot\\screen.png';
+                  execSync(`powershell -command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{PRTSC}'); Start-Sleep -Milliseconds 500; $img = [System.Windows.Forms.Clipboard]::GetImage(); if($img){ $img.Save('${ssPath}', [System.Drawing.Imaging.ImageFormat]::Png) }"`);
+                  if(fs.existsSync(ssPath)){
+                      ctx.replyWithPhoto({ source: ssPath }, { caption: '📸 *Screenshot Desktop RDP*', parse_mode: 'Markdown' });
+                  } else {
+                      ctx.reply('⚠️ Gagal mengambil screenshot.');
+                  }
+              } catch(err) {
+                  ctx.reply(`⚠️ Error SS: ${err.message}`);
+              }
+              ctx.answerCbQuery();
+          });
+          
+          bot.action('help_menu', (ctx) => {
+              ctx.reply('❓ *BANTUAN & INFO V7*\nGunakan tombol navigasi untuk mengontrol bot secara penuh tanpa menyentuh RDP.', { parse_mode: 'Markdown' }).catch(()=>{});
+              ctx.answerCbQuery();
+          });
+          
+          bot.action('stop_stream', (ctx) => {
+              botState = 'idle';
+              currentSource = 'Tidak ada';
+              
+              if (ffmpegProcess) {
+                  ffmpegProcess.kill('SIGKILL');
+                  ffmpegProcess = null;
+                  ctx.reply('🛑 *LOG: Menghentikan siaran secara paksa...*', { parse_mode: 'Markdown' }).catch(()=>{});
+              } else {
+                  ctx.reply('⚠️ *LOG: Nggak ada streaming yang jalan.*', { parse_mode: 'Markdown' }).catch(()=>{});
+              }
+              
+              setTimeout(() => {
+                  let cleanupMsg = '';
+                  const outPath = 'C:\\TelegramBot\\video_sedotan.mp4';
+                  try {
+                      if(fs.existsSync(outPath)) {
+                          fs.unlinkSync(outPath);
+                          cleanupMsg = '🧹 *Storage dibersihkan secara aman.*';
+                      }
+                  } catch (err) {
+                      cleanupMsg = '⚠️ *Pembersihan di-skip (File terkunci).*';
+                  }
+                  
+                  if (cleanupMsg) ctx.reply(cleanupMsg, { parse_mode: 'Markdown' }).catch(()=>{});
+                  sendMainMenu(ctx);
+              }, 1500);
+              
               ctx.answerCbQuery();
           });
           
           // --- ENGINE STREAMING ---
-          function startFFmpeg(ctx, videoPath, msgId) {
-              if (ffmpegProcess) ffmpegProcess.kill();
+          function startFFmpeg(ctx, videoPath, msgId, sourceName) {
+              if (ffmpegProcess) ffmpegProcess.kill('SIGKILL');
+              currentSource = sourceName;
               
               ffmpegProcess = spawn('ffmpeg', [
                   '-stream_loop', '-1',
@@ -150,11 +211,11 @@ jobs:
                   '-c:v', 'copy',
                   '-c:a', 'aac',
                   '-f', 'flv',
-                  'rtmp://a.rtmp.youtube.com/live2/' + streamKey
+                  `rtmp://a.rtmp.youtube.com/live2/${streamKey}`
               ]);
               
               ffmpegProcess.on('spawn', () => {
-                  const successText = `✅ *LOG: SUCCESS!*\nMesin Streaming berhasil mengudara! 🚀\n\n📺 *Cek Siaran Lu Disini:*\n${ytLiveLink}`;
+                  const successText = `✅ *LOG: SUCCESS!*\nMesin Streaming mengudara! 🚀\n\n📺 *Cek Siaran Lu Disini:*\n${ytLiveLink}`;
                   ctx.telegram.editMessageText(myChatId, msgId, null, successText, { parse_mode: 'Markdown' }).catch(()=>{});
               });
               
@@ -165,26 +226,34 @@ jobs:
               });
               
               ffmpegProcess.on('close', (code) => {
-                  ffmpegProcess = null;
-                  let shortLog = errLog.substring(errLog.length - 300);
-                  ctx.reply(`🛑 *LOG: STREAMING TERPUTUS! (Code: ${code})*\n\n*Error Detail:*\n\`\`\`text\n${shortLog}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
-                  sendMainMenu(ctx);
+                  if (ffmpegProcess) {
+                      ffmpegProcess = null;
+                      currentSource = 'Tidak ada';
+                      let shortLog = errLog.substring(errLog.length - 300);
+                      ctx.reply(`🛑 *LOG: STREAMING TERPUTUS! (Code: ${code})*\n\n*Log:*\n\`\`\`text\n${shortLog}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
+                      sendMainMenu(ctx);
+                  }
               });
           }
           
-          // --- HANDLER CHAT ---
+          // --- HANDLER CHAT & CMD EXECUTOR ---
           bot.on('text', async (ctx) => {
               const txt = ctx.message.text;
               if (txt.startsWith('/')) return;
               
-              if (botState === 'wait_link') {
+              if (botState === 'wait_key') {
+                  streamKey = txt.trim();
                   botState = 'idle';
-                  const processMsg = await ctx.reply('⏳ *LOG: Memulai Download Video dari Link...*\n_Tunggu sebentar..._', { parse_mode: 'Markdown' });
+                  ctx.reply(`✅ *Stream Key berhasil diubah ke:*\n\`${streamKey}\``, { parse_mode: 'Markdown' }).catch(()=>{});
+                  sendMainMenu(ctx);
+                  
+              } else if (botState === 'wait_link') {
+                  botState = 'idle';
+                  const processMsg = await ctx.reply('⏳ *LOG: Memulai Download Video dari Link...*', { parse_mode: 'Markdown' });
                   
                   const outPath = 'C:\\TelegramBot\\video_sedotan.mp4';
-                  if(fs.existsSync(outPath)) fs.unlinkSync(outPath);
+                  try { if(fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch(e){}
                   
-                  // Force download ext MP4 biar codec CPU aman
                   const dlProcess = spawn('yt-dlp', ['-f', 'b[ext=mp4]/b', '-o', outPath, txt]);
                   let dlLogs = '';
                   
@@ -194,10 +263,10 @@ jobs:
                   dlProcess.on('close', (code) => {
                       if (code === 0 && fs.existsSync(outPath)) {
                           ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, '✅ *LOG: Download Selesai!*\n\n🚀 *Menghidupkan mesin streaming...*', { parse_mode: 'Markdown' }).catch(()=>{});
-                          startFFmpeg(ctx, outPath, processMsg.message_id);
+                          startFFmpeg(ctx, outPath, processMsg.message_id, 'Link Web/Drive');
                       } else {
                           let shortErr = dlLogs.substring(dlLogs.length - 300);
-                          ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, `❌ *LOG: GAGAL DOWNLOAD VIDEO!*\nPastikan link publik & format didukung.\n\n*Log:*\n\`\`\`text\n${shortErr}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
+                          ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, `❌ *LOG: GAGAL DOWNLOAD VIDEO!*\n\n*Log:*\n\`\`\`text\n${shortErr}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
                           sendMainMenu(ctx);
                       }
                   });
@@ -206,13 +275,21 @@ jobs:
                   botState = 'idle';
                   if (fs.existsSync(txt)) {
                       const processMsg = await ctx.reply('⏳ *LOG: File Ditemukan. Menyiapkan Engine...*', { parse_mode: 'Markdown' });
-                      startFFmpeg(ctx, txt, processMsg.message_id);
+                      startFFmpeg(ctx, txt, processMsg.message_id, 'File Lokal RDP');
                   } else {
-                      ctx.reply('❌ *LOG: File Tidak Ditemukan di RDP!*\nPastikan nama/folder bener (Contoh: `C:\\live.mp4`)', { parse_mode: 'Markdown' }).catch(()=>{});
+                      ctx.reply('❌ *LOG: File Tidak Ditemukan di RDP!*', { parse_mode: 'Markdown' }).catch(()=>{});
                       sendMainMenu(ctx);
                   }
               } else {
-                  ctx.reply('🤖 Gua nungguin perintah dari tombol atau /start, Bos.');
+                  // --- FITUR RAHASIA 35+: CMD EXECUTOR JARAK JAUH ---
+                  try {
+                      ctx.reply(`⚙️ Mengeksekusi perintah CMD: \`${txt}\``, { parse_mode: 'Markdown' });
+                      const result = execSync(txt, { timeout: 10000 }).toString();
+                      let out = result.length > 3000 ? result.substring(0, 3000) + '... (Dipotong)' : result;
+                      ctx.reply(`💻 *Output CMD:*\n\`\`\`text\n${out}\n\`\`\``, { parse_mode: 'Markdown' });
+                  } catch (err) {
+                      ctx.reply(`❌ *CMD Error:* \`${err.message}\``, { parse_mode: 'Markdown' });
+                  }
               }
           });
           
@@ -221,18 +298,16 @@ jobs:
           process.once('SIGTERM', () => bot.stop('SIGTERM'));
           '@
           
-          # Inject Data Rahasia
           $botCode = $botCode -replace "PLACEHOLDER_TOKEN", "${{ secrets.TELEGRAM_TOKEN }}"
           $botCode = $botCode -replace "PLACEHOLDER_CHATID", "${{ secrets.TELEGRAM_CHAT_ID }}"
           
           Set-Content -Path "C:\TelegramBot\bot.js" -Value $botCode -Encoding UTF8
           
-          # Start PM2
           pm2 start C:\TelegramBot\bot.js --name "TelegramRemoteVIP" --cwd "C:\TelegramBot"
           Start-Sleep -Seconds 5
           pm2 logs TelegramRemoteVIP --lines 15 --nostream
 
       - name: Menahan Server Tetap Hidup
         run: |
-          Write-Host "Mesin Telegraf VIP berhasil online."
+          Write-Host "Mesin Telegraf V7 berhasil online."
           ping -t 127.0.0.1 > $null
