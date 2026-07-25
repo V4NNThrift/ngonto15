@@ -36,12 +36,23 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Install & Setup 9Router AI Gateway (Linux Port Proxy)
+      - name: Install & Setup 9Router AI Gateway (Ubuntu Ultimate FIX)
         run: |
+          # 1. Install 9Router secara global
           sudo npm install -g 9router
+          
+          # 2. FIX: Cari jalur asli file eksekutor 9router (Bypass npx)
+          ROUTER_BIN=$(which 9router)
+          
+          # 3. Jalankan langsung pakai PM2
           export CI="true"
-          pm2 start npx --name "9Router-AI" -- 9router
-          nohup socat TCP-LISTEN:9000,fork,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
+          pm2 start $ROUTER_BIN --name "9Router-AI"
+          
+          # 4. Tahan 5 detik biar mesin Node.js benar-benar panas & port 20128 terbuka
+          sleep 5
+          
+          # 5. FIX: Tambahkan 'reuseaddr' pada socat agar socket tidak gampang nge-drop (Empty Response)
+          nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
         run: |
