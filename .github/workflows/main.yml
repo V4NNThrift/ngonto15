@@ -1,4 +1,4 @@
-name: Yanzz Windows VPS System (Ultimate V8 - Auto Notify)
+name: Yanzz Windows VPS System (Ultimate V9 - Live Dashboard)
 
 on:
   workflow_dispatch:
@@ -44,13 +44,13 @@ jobs:
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Set-Content -Path "C:\ts_ip.txt" -Value $TS_IP
 
-      - name: Install & Setup 9Router AI Gateway
+      - name: Install & Setup 9Router AI Gateway (FIXED)
         run: |
           # Install 9Router
           npm install -g 9router
           
-          # Jalankan 9Router pakai PM2
-          pm2 start npx --name "9Router-AI" -- 9router
+          # FIX: Jalankan 9Router pakai PM2 dengan interpreter CMD
+          pm2 start 9router.cmd --name "9Router-AI" --interpreter cmd
           
           # Buka rute agar bisa diakses dari HP via Tailscale IP (Port 9000)
           netsh interface portproxy add v4tov4 listenport=9000 listenaddress=0.0.0.0 connectport=20128 connectaddress=127.0.0.1
@@ -82,9 +82,28 @@ jobs:
           let botState = 'idle';
           let streamInfo = { source: 'Tidak ada', resolution: 'Copy', audio: 'Unmuted' };
           
+          // Middleware Keamanan VIP
           bot.use((ctx, next) => {
               if (ctx.from && ctx.from.id.toString() === myChatId) return next();
           });
+          
+          // Engine Kalkulator CPU Real-time
+          let previousCpuTimes = os.cpus().map(c => c.times);
+          function getCpuUsage() {
+              const currentCpuTimes = os.cpus().map(c => c.times);
+              let totalIdle = 0, totalTick = 0;
+              for (let i = 0; i < currentCpuTimes.length; i++) {
+                  const idle = currentCpuTimes[i].idle - previousCpuTimes[i].idle;
+                  let tick = 0;
+                  for (const type in currentCpuTimes[i]) {
+                      tick += currentCpuTimes[i][type] - previousCpuTimes[i][type];
+                  }
+                  totalIdle += idle;
+                  totalTick += tick;
+              }
+              previousCpuTimes = currentCpuTimes;
+              return totalTick === 0 ? 0 : (100 - (100 * totalIdle / totalTick)).toFixed(1);
+          }
           
           async function runTask(ctx, loadingText, taskFn) {
               const msg = await ctx.reply(`⏳ *Memproses:* ${loadingText}...`, { parse_mode: 'Markdown' });
@@ -403,8 +422,22 @@ jobs:
           process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
           process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
           
-          // --- FITUR AUTO-NOTIFY 9ROUTER ---
-          bot.telegram.sendMessage(myChatId, `🔥 *SERVER & 9ROUTER ONLINE!* 🔥\n\nVPS lu berhasil nyala dan 9Router udah siap disiksa. Langsung gas buka dashboard-nya di HP lu:\n\n🌐 *Link 9Router:* http://${tsIP}:9000\n🔑 *Password:* \`123456\`\n\n🤖 _Ketik /start buat buka panel kontrol bot._`, { parse_mode: 'Markdown' }).catch(()=>{});
+          // --- MESIN NOTIFIKASI & DASHBOARD LIVE (UPDATE TIAP 2 DETIK) ---
+          bot.telegram.sendMessage(myChatId, "⏳ *Menginisiasi Live Dashboard...*", { parse_mode: 'Markdown' }).then((msg) => {
+              setInterval(() => {
+                  const cpu = getCpuUsage();
+                  const totalRam = (os.totalmem() / 1073741824).toFixed(2);
+                  const freeRam = (os.freemem() / 1073741824).toFixed(2);
+                  const usedRam = (totalRam - freeRam).toFixed(2);
+                  const uptime = (os.uptime() / 3600).toFixed(2);
+                  const streamStat = ffmpegProcess ? '🟢 SEDANG LIVE' : '🔴 IDLE';
+                  
+                  const text = `🔥 *SERVER & 9ROUTER ONLINE!* 🔥\n\n🌐 *Link 9Router:* http://${tsIP}:9000\n🔑 *Password:* \`123456\`\n\n📊 *LIVE MONITORING (Real-Time)*\n⏱️ *Uptime:* ${uptime} Jam\n🧠 *RAM:* ${usedRam} GB / ${totalRam} GB\n⚙️ *CPU:* ${cpu}%\n🎥 *Stream:* ${streamStat}\n\n🤖 _Ketik /start buat buka panel kontrol utama._`;
+                  
+                  // Perisai siluman anti-crash kalau Telegram melimitasi kecepatan edit pesan
+                  bot.telegram.editMessageText(myChatId, msg.message_id, null, text, { parse_mode: 'Markdown' }).catch(() => {});
+              }, 2000); // 2000 milidetik = 2 detik
+          });
           
           bot.launch();
           process.once('SIGINT', () => bot.stop('SIGINT'));
