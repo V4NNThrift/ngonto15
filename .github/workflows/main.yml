@@ -36,26 +36,29 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Install & Setup 9Router AI Gateway (TMUX VIRTUAL TERMINAL)
+      - name: Install & Setup 9Router AI Gateway (AUTO-ENTER FIX)
         run: |
           # 1. Install 9Router
           sudo npm install -g 9router
-          
-          # 2. Bantai semua zombie process yang mungkin nyangkut di port 20128 dari percobaan sebelumnya
           sudo fuser -k 20128/tcp || true
           
-          # 3. Hapus semua jejak GitHub Actions agar 9Router tidak curiga
           export CI=""
           export GITHUB_ACTIONS=""
           
-          # 4. BIKIN TERMINAL PALSU (TMUX) DAN JALANKAN 9ROUTER DI DALAMNYA!
-          # Kita kurung dia di sesi bernama "router_session" dengan pengaman HOST lokal
-          tmux new-session -d -s router_session 'HOST=127.0.0.1 9router --host 127.0.0.1'
+          # 2. Jalankan 9router di dalam sesi TMUX
+          tmux new-session -d -s router_session '9router'
           
-          # 5. Beri waktu 5 detik agar server bernapas dan stabil
+          # 3. Tunggu 3 detik sampai menu interaktifnya muncul di layar virtual
+          sleep 3
+          
+          # 4. KIRIM TOMBOL "ENTER" OTOMATIS KE TMUX!
+          # Karena opsi "Web UI" sudah dipilih secara default, Enter akan langsung mengaktifkan web servernya.
+          tmux send-keys -t router_session Enter
+          
+          # 5. Tunggu 5 detik agar web server 9Router benar-benar siap di port 20128
           sleep 5
           
-          # 6. Jembatani port pakai socat dari 9000 ke 20128
+          # 6. Jembatani port 9000 ke 20128
           nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
