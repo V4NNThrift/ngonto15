@@ -36,10 +36,12 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Install & Setup 9Router AI Gateway (AUTO-ENTER FIX)
+      - name: Install & Setup 9Router AI Gateway (SQLITE DB FIX)
         run: |
-          # 1. Install 9Router
-          sudo npm install -g 9router
+          # 1. Suntik Driver Database SQLite barengan dengan 9Router
+          sudo npm install -g better-sqlite3 sqlite3 9router
+          
+          # Bantai proses lama kalau ada yang nyangkut
           sudo fuser -k 20128/tcp || true
           
           export CI=""
@@ -51,14 +53,13 @@ jobs:
           # 3. Tunggu 3 detik sampai menu interaktifnya muncul di layar virtual
           sleep 3
           
-          # 4. KIRIM TOMBOL "ENTER" OTOMATIS KE TMUX!
-          # Karena opsi "Web UI" sudah dipilih secara default, Enter akan langsung mengaktifkan web servernya.
+          # 4. Pencet "ENTER" otomatis ke TMUX buat milih opsi Web UI
           tmux send-keys -t router_session Enter
           
-          # 5. Tunggu 5 detik agar web server 9Router benar-benar siap di port 20128
+          # 5. Tunggu 5 detik agar web server dan database siap
           sleep 5
           
-          # 6. Jembatani port 9000 ke 20128
+          # 6. Jembatani port pakai socat dari 9000 ke 20128
           nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
