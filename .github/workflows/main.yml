@@ -1,4 +1,4 @@
-name: Yanzz Ubuntu VPS System (Ultimate V10.1 - Fixed)
+name: Yanzz Ubuntu VPS System (Final Fix - Direct Port)
 
 on:
   workflow_dispatch:
@@ -12,11 +12,10 @@ jobs:
       - name: Set Timezone ke Indonesia (WIB)
         run: sudo timedatectl set-timezone Asia/Jakarta
 
-      - name: Install System Dependencies (Linux Tools - FIXED)
+      - name: Install System Dependencies (Linux Tools)
         run: |
           sudo apt update
-          # FIX: Mengganti 'awk' dengan 'gawk' agar apt tidak kebingungan
-          sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget gawk jq
+          sudo apt install -y ffmpeg xvfb fluxbox scrot curl wget gawk jq
           
           # Install yt-dlp secara manual agar versi terbaru
           sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
@@ -36,23 +35,18 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Install & Setup 9Router AI Gateway (Ubuntu Ultimate FIX)
+      - name: Install & Setup 9Router AI Gateway (DIRECT BINDING)
         run: |
-          # 1. Install 9Router secara global
+          # 1. Install 9Router
           sudo npm install -g 9router
-          
-          # 2. FIX: Cari jalur asli file eksekutor 9router (Bypass npx)
           ROUTER_BIN=$(which 9router)
           
-          # 3. Jalankan langsung pakai PM2
+          # 2. FIX: Paksa 9Router mendengarkan semua IP tanpa proxy!
+          export HOST="0.0.0.0"
           export CI="true"
+          
+          # 3. Jalankan langsung di port bawaannya (20128)
           pm2 start $ROUTER_BIN --name "9Router-AI"
-          
-          # 4. Tahan 5 detik biar mesin Node.js benar-benar panas & port 20128 terbuka
-          sleep 5
-          
-          # 5. FIX: Tambahkan 'reuseaddr' pada socat agar socket tidak gampang nge-drop (Empty Response)
-          nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
         run: |
@@ -149,7 +143,7 @@ jobs:
           
           bot.command('start', (ctx) => {
               botState = 'idle';
-              ctx.reply(`👋 *Selamat datang di UBUNTU LINUX, Bos!*\n\nServer jauh lebih ringan dan cepat. Silakan pilih menu di bawah ini:\n\n🔗 *Akses 9Router:* http://${tsIP}:9000\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
+              ctx.reply(`👋 *Selamat datang di UBUNTU LINUX, Bos!*\n\nServer jauh lebih ringan dan cepat. Silakan pilih menu di bawah ini:\n\n🔗 *Akses 9Router:* http://${tsIP}:20128\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
           });
           
           bot.action('main_menu', (ctx) => {
@@ -415,7 +409,8 @@ jobs:
                   const uptime = (os.uptime() / 3600).toFixed(2);
                   const streamStat = ffmpegProcess ? '🟢 SEDANG LIVE' : '🔴 IDLE';
                   
-                  const text = `🐧 *UBUNTU & 9ROUTER ONLINE!* 🐧\n\n🌐 *Link 9Router:* http://${tsIP}:9000\n🔑 *Password:* \`123456\`\n\n📊 *LIVE MONITORING (Linux)*\n⏱️ *Uptime:* ${uptime} Jam\n🧠 *RAM:* ${usedRam} GB / ${totalRam} GB\n⚙️ *CPU:* ${cpu}%\n🎥 *Stream:* ${streamStat}\n\n🤖 _Ketik /start buat buka panel kontrol._`;
+                  // LINK SEKARANG MENGARAH KE PORT ASLI 20128
+                  const text = `🐧 *UBUNTU & 9ROUTER ONLINE!* 🐧\n\n🌐 *Link 9Router:* http://${tsIP}:20128\n🔑 *Password:* \`123456\`\n\n📊 *LIVE MONITORING (Linux)*\n⏱️ *Uptime:* ${uptime} Jam\n🧠 *RAM:* ${usedRam} GB / ${totalRam} GB\n⚙️ *CPU:* ${cpu}%\n🎥 *Stream:* ${streamStat}\n\n🤖 _Ketik /start buat buka panel kontrol._`;
                   
                   bot.telegram.editMessageText(myChatId, msg.message_id, null, text, { parse_mode: 'Markdown' }).catch(() => {});
               }, 2000);
