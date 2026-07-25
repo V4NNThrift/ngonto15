@@ -1,4 +1,4 @@
-name: Yanzz Ubuntu VPS System (Ultimate V10 - Linux Edition)
+name: Yanzz Ubuntu VPS System (Ultimate V10.1 - Fixed)
 
 on:
   workflow_dispatch:
@@ -12,11 +12,13 @@ jobs:
       - name: Set Timezone ke Indonesia (WIB)
         run: sudo timedatectl set-timezone Asia/Jakarta
 
-      - name: Install System Dependencies (Linux Tools)
+      - name: Install System Dependencies (Linux Tools - FIXED)
         run: |
           sudo apt update
-          sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget awk jq
-          # Install yt-dlp secara manual agar dapat versi terbaru
+          # FIX: Mengganti 'awk' dengan 'gawk' agar apt tidak kebingungan
+          sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget gawk jq
+          
+          # Install yt-dlp secara manual agar versi terbaru
           sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
 
@@ -31,28 +33,20 @@ jobs:
           curl -fsSL https://tailscale.com/install.sh | sh
           sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-${GITHUB_RUN_ID}
           
-          # Simpan IP ke file
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
       - name: Install & Setup 9Router AI Gateway (Linux Port Proxy)
         run: |
-          # Install 9Router
           sudo npm install -g 9router
-          
-          # Jalankan 9Router dengan PM2 (Bypass prompt pakai CI=true)
           export CI="true"
           pm2 start npx --name "9Router-AI" -- 9router
-          
-          # Buka jalur pakai Socat (Linux Port Forwarding dari 9000 ke 20128)
           nohup socat TCP-LISTEN:9000,fork,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
         run: |
-          # Membuat monitor virtual (Headless X11)
           Xvfb :99 -screen 0 1280x720x24 &
           sleep 2
-          # Menjalankan window manager ringan agar tidak blank hitam
           DISPLAY=:99 fluxbox &
 
       - name: Merakit & Menjalankan Bot Telegram (Linux Engine)
@@ -62,7 +56,6 @@ jobs:
           npm init -y
           npm install telegraf
           
-          # Menggunakan heredoc bash untuk menghindari error karakter
           cat << 'EOF' > bot.js
           const { Telegraf, Markup } = require('telegraf');
           const { spawn, execSync, exec } = require('child_process');
@@ -179,7 +172,6 @@ jobs:
               await runTask(ctx, 'Menangkap layar Virtual X11', async () => {
                   const ssPath = '/home/runner/TelegramBot/screen.png';
                   if(fs.existsSync(ssPath)) fs.unlinkSync(ssPath);
-                  // Exec scrot on Display :99
                   await execAsync(`DISPLAY=:99 scrot ${ssPath}`);
                   if(!fs.existsSync(ssPath)) throw new Error('Gagal memproses gambar Xvfb.');
                   await ctx.replyWithPhoto({ source: ssPath }, { caption: '📸 *Layar Virtual Ubuntu*', parse_mode: 'Markdown' });
@@ -389,7 +381,6 @@ jobs:
                   });
               } else {
                   try {
-                      // Bash Command Executor
                       const msg = await ctx.reply(`⚙️ *Menjalankan shell (Bash):* \`${txt}\``, { parse_mode: 'Markdown' });
                       const { stdout, stderr } = await execAsync(txt, { timeout: 15000 });
                       let out = stdout || stderr || 'Perintah Linux dieksekusi tanpa output.';
@@ -404,7 +395,6 @@ jobs:
           process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
           process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
           
-          // --- MESIN NOTIFIKASI & DASHBOARD LIVE (UPDATE TIAP 2 DETIK) ---
           bot.telegram.sendMessage(myChatId, "⏳ *Memuat Sistem Linux (Ubuntu)...*", { parse_mode: 'Markdown' }).then((msg) => {
               setInterval(() => {
                   const cpu = getCpuUsage();
@@ -425,11 +415,9 @@ jobs:
           process.once('SIGTERM', () => bot.stop('SIGTERM'));
           EOF
           
-          # Inject Data Rahasia dengan perl/sed ala Linux
           sed -i "s/PLACEHOLDER_TOKEN/${{ secrets.TELEGRAM_TOKEN }}/g" bot.js
           sed -i "s/PLACEHOLDER_CHATID/${{ secrets.TELEGRAM_CHAT_ID }}/g" bot.js
           
-          # Start PM2
           pm2 start bot.js --name "TelegramRemoteVIP"
           sleep 3
           pm2 logs TelegramRemoteVIP --lines 10 --nostream
@@ -437,5 +425,4 @@ jobs:
       - name: Menahan Server Tetap Aktif
         run: |
           echo "Sistem Ubuntu Enterprise berhasil mengudara. Pantau melalui Telegram."
-          # Loop abadi penahan server (karena Linux tidak punya 'ping -t')
           tail -f /dev/null
