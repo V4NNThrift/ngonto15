@@ -36,30 +36,35 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Install & Setup 9Router AI Gateway (SQLITE DB FIX)
+      - name: Install & Setup 9Router AI Gateway (LOCAL DB FIX)
         run: |
-          # 1. Suntik Driver Database SQLite barengan dengan 9Router
-          sudo npm install -g better-sqlite3 sqlite3 9router
+          # 1. Install tool wajib bawaan Linux untuk membaca database C++ SQLite
+          sudo apt-get install -y build-essential python3
           
-          # Bantai proses lama kalau ada yang nyangkut
+          # 2. Buat "kamar khusus" agar 9Router dan SQLite saling mengenali
+          mkdir -p /home/runner/router_app
+          cd /home/runner/router_app
+          npm init -y
+          
+          # 3. FIX: Install secara LOKAL (tanpa sudo dan tanpa -g). Ini KUNCI UTAMANYA!
+          npm install 9router better-sqlite3 sqlite3
+          
+          # 4. Bersihkan port dan matikan sensor bot
           sudo fuser -k 20128/tcp || true
-          
           export CI=""
           export GITHUB_ACTIONS=""
           
-          # 2. Jalankan 9router di dalam sesi TMUX
-          tmux new-session -d -s router_session '9router'
+          # 5. Jalankan 9Router pakai 'npx' dari dalam "kamar khusus" tersebut via TMUX
+          tmux new-session -d -s router_session 'npx 9router'
           
-          # 3. Tunggu 3 detik sampai menu interaktifnya muncul di layar virtual
+          # 6. Tunggu 3 detik, lalu tekan ENTER untuk menyalakan Web UI
           sleep 3
-          
-          # 4. Pencet "ENTER" otomatis ke TMUX buat milih opsi Web UI
           tmux send-keys -t router_session Enter
           
-          # 5. Tunggu 5 detik agar web server dan database siap
+          # 7. Tunggu 5 detik agar web server dan database nge-link
           sleep 5
           
-          # 6. Jembatani port pakai socat dari 9000 ke 20128
+          # 8. Jembatani port pakai socat dari 9000 ke 20128
           nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
