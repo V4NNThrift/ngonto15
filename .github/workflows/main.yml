@@ -1,165 +1,311 @@
-name: Yanzz Ubuntu VPS System (Final Perfect Execution)
+name: Yanzz Ubuntu VPS System (Final Production)
 
 on:
   workflow_dispatch:
 
 jobs:
-  ubuntu-vps:
-    runs-on: ubuntu-latest
-    timeout-minutes: 3600
+    ubuntu-vps:
+        runs-on: ubuntu-latest
+        timeout-minutes: 3600
 
-    steps:
-      - name: Set Timezone ke Indonesia (WIB)
-        run: sudo timedatectl set-timezone Asia/Jakarta
+        steps:
+            - name: Set Timezone ke Indonesia (WIB)
+              run: sudo timedatectl set-timezone Asia/Jakarta
 
-      - name: Install System Dependencies (Linux Tools)
-        run: |
-          sudo apt update
-          sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget gawk jq
-          
-          # Install yt-dlp secara manual agar versi terbaru
-          sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
+            - name: Install System Dependencies
+              run: |
+                  sudo apt update
+                  sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget gawk jq
+                  sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
+                  sudo chmod a+rx /usr/local/bin/yt-dlp
 
-      - name: Setup Node.js & PM2
-        uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-      - run: sudo npm install -g pm2
+            - name: Setup Node.js & PM2
+              uses: actions/setup-node@v3
+              with:
+                  node-version: '20'
+            - run: sudo npm install -g pm2
 
-      - name: Setup Jaringan Tailscale (VPN)
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-${GITHUB_RUN_ID}
-          
-          TS_IP=$(tailscale ip -4)
-          echo "$TS_IP" > /home/runner/ts_ip.txt
-
-      - name: Install & Setup 9Router AI Gateway (ANTI-SUICIDE FIX)
-        run: |
-          # 1. Install 9Router
-          sudo npm install -g 9router
-          
-          # 2. FIX: Tambahkan flag "--host 127.0.0.1" agar 9Router merasa aman dan tidak "Exiting..."
-          export CI="true"
-          pm2 start 9router --name "9Router-AI" -- --host 127.0.0.1
-          
-          # 3. Tunggu mesin Node.js stabil
-          sleep 5
-          
-          # 4. Gunakan Socat untuk mem-bypass secara diam-diam dari Port 9000 ke 20128
-          nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
-
-      - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
-        run: |
-          Xvfb :99 -screen 0 1280x720x24 &
-          sleep 2
-          DISPLAY=:99 fluxbox &
-
-      - name: Merakit & Menjalankan Bot Telegram (Diagnostic Engine)
-        run: |
-          mkdir -p /home/runner/TelegramBot
-          cd /home/runner/TelegramBot
-          npm init -y
-          npm install telegraf
-          
-          cat << 'EOF' > bot.js
-          const { Telegraf, Markup } = require('telegraf');
-          const { spawn, execSync, exec } = require('child_process');
-          const os = require('os');
-          const fs = require('fs');
-          const util = require('util');
-          const execAsync = util.promisify(exec);
-          
-          const bot = new Telegraf('PLACEHOLDER_TOKEN');
-          const myChatId = 'PLACEHOLDER_CHATID';
-          
-          let streamKey = '0ahd-k6zv-xuez-ww2r-4mjf';
-          const ytHandle = 'Yanzz'; 
-          const tsIP = fs.existsSync('/home/runner/ts_ip.txt') ? fs.readFileSync('/home/runner/ts_ip.txt', 'utf8').trim() : 'Tidak diketahui';
-          
-          let ffmpegProcess = null;
-          let botState = 'idle';
-          
-          bot.use((ctx, next) => {
-              if (ctx.from && ctx.from.id.toString() === myChatId) return next();
-          });
-          
-          const menuUtama = Markup.inlineKeyboard([
-              [Markup.button.callback('📺 Menu Streaming', 'menu_stream'), Markup.button.callback('⚙️ Sistem & Info', 'menu_sistem')],
-              [Markup.button.callback('📜 Cek Log 9Router', 'log_router'), Markup.button.callback('🔄 Restart Bot', 'restart_bot')]
-          ]);
-          
-          bot.command('start', (ctx) => {
-              botState = 'idle';
-              ctx.reply(`👋 *Selamat datang di UBUNTU LINUX, Bos!*\n\n🔗 *Akses 9Router:* http://${tsIP}:9000\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
-          });
-          
-          bot.action('main_menu', (ctx) => {
-              ctx.editMessageText('🤖 *Panel Kontrol Linux (Utama):*', { parse_mode: 'Markdown', ...menuUtama }).catch(()=>{});
-              ctx.answerCbQuery();
-          });
-          
-          bot.action('log_router', async (ctx) => {
-              ctx.answerCbQuery('Mengambil log 9Router...');
-              try {
-                  const rLog = execSync('pm2 logs 9Router-AI --lines 25 --nostream').toString().substring(0, 3500);
-                  await ctx.reply(`📜 *Live Log 9Router:*\n\`\`\`text\n${rLog}\n\`\`\``, { parse_mode: 'Markdown' });
-              } catch (err) {
-                  await ctx.reply(`❌ *Gagal baca log:* ${err.message}`);
-              }
-          });
-          
-          bot.action('restart_bot', async (ctx) => {
-              ctx.answerCbQuery('Merestart sistem...');
-              ctx.reply('🔄 Menginisiasi *restart* PM2...');
-              setTimeout(() => { exec('pm2 restart TelegramRemoteVIP'); }, 1500);
-          });
-          
-          bot.on('text', async (ctx) => {
-              const txt = ctx.message.text;
-              if (txt.startsWith('/')) return;
-              try {
-                  const msg = await ctx.reply(`⚙️ *Menjalankan (Bash):* \`${txt}\``, { parse_mode: 'Markdown' });
-                  const { stdout, stderr } = await execAsync(txt, { timeout: 15000 });
-                  let out = stdout || stderr || 'Berhasil tanpa output.';
-                  if (out.length > 3500) out = out.substring(0, 3500) + '... (Terpotong)';
-                  await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `💻 *Hasil:*\n\`\`\`text\n${out}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
-              } catch (err) {
-                  ctx.reply(`❌ *Error:*\n\`\`\`text\n${err.message}\n\`\`\``, { parse_mode: 'Markdown' });
-              }
-          });
-          
-          process.on('uncaughtException', (err) => { console.error(err); });
-          process.on('unhandledRejection', (reason) => { console.error(reason); });
-          
-          bot.telegram.sendMessage(myChatId, "⏳ *Mengumpulkan Data Server...*", { parse_mode: 'Markdown' }).then((msg) => {
-              setTimeout(() => {
-                  let rLog = 'Gagal membaca log.';
-                  try { 
-                      rLog = execSync('pm2 logs 9Router-AI --lines 15 --nostream').toString(); 
-                      if(rLog.length > 800) rLog = rLog.substring(rLog.length - 800);
-                  } catch(e){}
+            - name: Setup Jaringan Tailscale (VPN)
+              run: |
+                  curl -fsSL https://tailscale.com/install.sh | sh
+                  sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-${GITHUB_RUN_ID}
                   
-                  const text = `🐧 *UBUNTU SYSTEM READY!* 🐧\n\n🌐 *Link Akses:* http://${tsIP}:9000\n\n⚠️ *LOG TERBARU 9ROUTER:*\n\`\`\`text\n${rLog}\n\`\`\`\n\n🤖 _Ketik /start untuk menu utama._`;
-                  
-                  bot.telegram.editMessageText(myChatId, msg.message_id, null, text, { parse_mode: 'Markdown' }).catch(() => {});
-              }, 4000);
-          });
-          
-          bot.launch();
-          process.once('SIGINT', () => bot.stop('SIGINT'));
-          process.once('SIGTERM', () => bot.stop('SIGTERM'));
-          EOF
-          
-          sed -i "s/PLACEHOLDER_TOKEN/${{ secrets.TELEGRAM_TOKEN }}/g" bot.js
-          sed -i "s/PLACEHOLDER_CHATID/${{ secrets.TELEGRAM_CHAT_ID }}/g" bot.js
-          
-          pm2 start bot.js --name "TelegramRemoteVIP"
-          sleep 3
-          pm2 logs TelegramRemoteVIP --lines 10 --nostream
+                  TS_IP=$(tailscale ip -4)
+                  echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Menahan Server Tetap Aktif
-        run: |
-          echo "Sistem Ubuntu Enterprise mengudara."
-          tail -f /dev/null
+            - name: Install & Setup 9Router AI Gateway
+              run: |
+                  sudo npm install -g 9router
+                  
+                  # Jalankan langsung dengan argumen host lokal agar tidak self-terminate
+                  pm2 start $(which 9router) --name "9Router-AI" -- --host 127.0.0.1
+                  
+                  sleep 5
+                  
+                  # Jembatan Socat dari port eksternal 9000 ke port internal 20128
+                  nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
+
+            - name: Setup Virtual Monitor
+              run: |
+                  Xvfb :99 -screen 0 1280x720x24 &
+                  sleep 2
+                  DISPLAY=:99 fluxbox &
+
+            - name: Merakit & Menjalankan Bot Telegram
+              run: |
+                  mkdir -p /home/runner/TelegramBot
+                  cd /home/runner/TelegramBot
+                  npm init -y
+                  npm install telegraf
+                  
+                  cat << 'EOF' > bot.js
+                  const { Telegraf, Markup } = require('telegraf');
+                  const { spawn, execSync, exec } = require('child_process');
+                  const os = require('os');
+                  const fs = require('fs');
+                  const util = require('util');
+                  const execAsync = util.promisify(exec);
+                  
+                  const bot = new Telegraf('PLACEHOLDER_TOKEN');
+                  const myChatId = 'PLACEHOLDER_CHATID';
+                  
+                  let streamKey = '0ahd-k6zv-xuez-ww2r-4mjf';
+                  const ytHandle = 'Yanzz'; 
+                  const tsIP = fs.existsSync('/home/runner/ts_ip.txt') ? fs.readFileSync('/home/runner/ts_ip.txt', 'utf8').trim() : 'Tidak diketahui';
+                  
+                  let ffmpegProcess = null;
+                  let botState = 'idle';
+                  let streamInfo = { source: 'Tidak ada', resolution: 'Copy', audio: 'Unmuted' };
+                  
+                  bot.use((ctx, next) => {
+                      if (ctx.from && ctx.from.id.toString() === myChatId) return next();
+                  });
+                  
+                  let previousCpuTimes = os.cpus().map(c => c.times);
+                  function getCpuUsage() {
+                      const currentCpuTimes = os.cpus().map(c => c.times);
+                      let totalIdle = 0, totalTick = 0;
+                      for (let i = 0; i < currentCpuTimes.length; i++) {
+                          const idle = currentCpuTimes[i].idle - previousCpuTimes[i].idle;
+                          let tick = 0;
+                          for (const type in currentCpuTimes[i]) {
+                              tick += currentCpuTimes[i][type] - previousCpuTimes[i][type];
+                          }
+                          totalIdle += idle;
+                          totalTick += tick;
+                      }
+                      previousCpuTimes = currentCpuTimes;
+                      return totalTick === 0 ? 0 : (100 - (100 * totalIdle / totalTick)).toFixed(1);
+                  }
+                  
+                  async function runTask(ctx, loadingText, taskFn) {
+                      const msg = await ctx.reply(`⏳ *Memproses:* ${loadingText}...`, { parse_mode: 'Markdown' });
+                      try {
+                          const resultText = await taskFn();
+                          await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `✅ ${resultText}`, { parse_mode: 'Markdown' }).catch(()=>{});
+                      } catch (err) {
+                          await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `❌ *Gagal:* ${err.message}`, { parse_mode: 'Markdown' }).catch(()=>{});
+                      }
+                  }
+                  
+                  const menuUtama = Markup.inlineKeyboard([
+                      [Markup.button.callback('📺 Menu Streaming', 'menu_stream'), Markup.button.callback('⚙️ Sistem & Info', 'menu_sistem')],
+                      [Markup.button.callback('📂 File Manager', 'menu_file'), Markup.button.callback('🌐 Jaringan & Tools', 'menu_tools')],
+                      [Markup.button.callback('📜 Cek Log 9Router', 'log_router')]
+                  ]);
+                  
+                  const menuStream = Markup.inlineKeyboard([
+                      [Markup.button.callback('🌐 Stream via Link', 'src_link'), Markup.button.callback('📁 Stream via Lokal', 'src_local')],
+                      [Markup.button.callback('🛑 Hentikan Stream', 'stop_stream'), Markup.button.callback('📊 Status Stream', 'cek_stream')],
+                      [Markup.button.callback('« Kembali ke Beranda', 'main_menu')]
+                  ]);
+                  
+                  const menuSistem = Markup.inlineKeyboard([
+                      [Markup.button.callback('📊 Status Hardware', 'cek_hardware'), Markup.button.callback('⏱️ Uptime & OS', 'sys_info')],
+                      [Markup.button.callback('« Kembali', 'main_menu')]
+                  ]);
+                  
+                  const menuFile = Markup.inlineKeyboard([
+                      [Markup.button.callback('📂 Cek Folder Bot', 'ls_bot'), Markup.button.callback('🧹 Bersihkan Temp', 'clean_temp')],
+                      [Markup.button.callback('« Kembali ke Beranda', 'main_menu')]
+                  ]);
+                  
+                  const menuTools = Markup.inlineKeyboard([
+                      [Markup.button.callback('📸 Screenshot Server', 'ss_rdp'), Markup.button.callback('📶 Ping Test', 'ping_test')],
+                      [Markup.button.callback('🌐 Cek Public IP', 'pub_ip'), Markup.button.callback('🔄 Restart Bot', 'restart_bot')],
+                      [Markup.button.callback('« Kembali', 'main_menu')]
+                  ]);
+                  
+                  bot.command('start', (ctx) => {
+                      botState = 'idle';
+                      ctx.reply(`👋 *Selamat datang di Ubuntu Server, Bos!*\n\n🔗 *Akses 9Router:* http://${tsIP}:9000\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
+                  });
+                  
+                  bot.action('main_menu', (ctx) => {
+                      botState = 'idle';
+                      ctx.editMessageText('🤖 *Panel Kontrol Utama:*', { parse_mode: 'Markdown', ...menuUtama }).catch(()=>{});
+                      ctx.answerCbQuery();
+                  });
+                  
+                  bot.action('menu_stream', (ctx) => {
+                      ctx.editMessageText('📺 *Manajemen Streaming:*', { parse_mode: 'Markdown', ...menuStream }).catch(()=>{});
+                      ctx.answerCbQuery();
+                  });
+                  
+                  bot.action('menu_sistem', (ctx) => {
+                      ctx.editMessageText('⚙️ *Manajemen Sistem:*', { parse_mode: 'Markdown', ...menuSistem }).catch(()=>{});
+                      ctx.answerCbQuery();
+                  });
+                  
+                  bot.action('menu_file', (ctx) => {
+                      ctx.editMessageText('📂 *Manajemen Direktori:*', { parse_mode: 'Markdown', ...menuFile }).catch(()=>{});
+                      ctx.answerCbQuery();
+                  });
+                  
+                  bot.action('menu_tools', (ctx) => {
+                      ctx.editMessageText('🌐 *Alat Jaringan:*', { parse_mode: 'Markdown', ...menuTools }).catch(()=>{});
+                      ctx.answerCbQuery();
+                  });
+                  
+                  bot.action('log_router', async (ctx) => {
+                      ctx.answerCbQuery('Mengambil log 9Router...');
+                      try {
+                          const rLog = execSync('pm2 logs 9Router-AI --lines 20 --nostream').toString().substring(0, 3500);
+                          await ctx.reply(`📜 *Log 9Router:*\n\`\`\`text\n${rLog}\n\`\`\``, { parse_mode: 'Markdown' });
+                      } catch (err) {
+                          await ctx.reply(`❌ Gagal baca log: ${err.message}`);
+                      }
+                  });
+                  
+                  bot.action('ss_rdp', async (ctx) => {
+                      ctx.answerCbQuery('Mengambil screenshot...');
+                      await runTask(ctx, 'Menangkap layar Virtual X11', async () => {
+                          const ssPath = '/home/runner/TelegramBot/screen.png';
+                          if(fs.existsSync(ssPath)) fs.unlinkSync(ssPath);
+                          await execAsync(`DISPLAY=:99 scrot ${ssPath}`);
+                          if(!fs.existsSync(ssPath)) throw new Error('Gagal memproses gambar Xvfb.');
+                          await ctx.replyWithPhoto({ source: ssPath }, { caption: '📸 *Layar Virtual Ubuntu*', parse_mode: 'Markdown' });
+                          return 'Tangkapan layar berhasil dikirim.';
+                      });
+                  });
+                  
+                  bot.action('cek_hardware', async (ctx) => {
+                      ctx.answerCbQuery();
+                      await runTask(ctx, 'Mengumpulkan data hardware', async () => {
+                          const freeRam = (os.freemem() / 1073741824).toFixed(2);
+                          const totalRam = (os.totalmem() / 1073741824).toFixed(2);
+                          const cpuCount = os.cpus().length;
+                          const cpuModel = os.cpus()[0].model;
+                          let diskInfo = 'Gagal membaca disk';
+                          try {
+                              const { stdout } = await execAsync(`df -h / | awk 'NR==2 {print $4 " Tersisa / " $2 " Total"}'`);
+                              diskInfo = stdout.trim();
+                          } catch(e) {}
+                          return `*Hardware Stats:*\n\n🧠 *RAM:* ${freeRam} GB / ${totalRam} GB\n💾 *Disk:* ${diskInfo}\n⚙️ *CPU:* ${cpuCount} Core`;
+                      });
+                  });
+                  
+                  bot.action('pub_ip', async (ctx) => {
+                      ctx.answerCbQuery();
+                      await runTask(ctx, 'Mengecek Public IP', async () => {
+                          const { stdout } = await execAsync('curl -s ifconfig.me');
+                          return `🌐 *IP Publik:* \`${stdout.trim()}\`\n🔒 *IP Tailscale:* \`${tsIP}\``;
+                      });
+                  });
+                  
+                  bot.action('ping_test', async (ctx) => {
+                      ctx.answerCbQuery();
+                      await runTask(ctx, 'Uji jaringan', async () => {
+                          const { stdout } = await execAsync('ping -c 4 8.8.8.8');
+                          return `📶 *Ping Result:*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+                      });
+                  });
+                  
+                  bot.action('restart_bot', async (ctx) => {
+                      ctx.answerCbQuery('Merestart bot...');
+                      setTimeout(() => { exec('pm2 restart TelegramRemoteVIP'); }, 1500);
+                  });
+                  
+                  bot.action('sys_info', async (ctx) => {
+                      ctx.answerCbQuery();
+                      await runTask(ctx, 'Informasi sistem', async () => {
+                          const uptimeHours = (os.uptime() / 3600).toFixed(2);
+                          return `⏱️ *Uptime:* ${uptimeHours} Jam\n🖥️ *OS:* ${os.type()} ${os.release()}`;
+                      });
+                  });
+                  
+                  bot.action('src_link', (ctx) => {
+                      botState = 'wait_link';
+                      ctx.editMessageText('🌐 *Mode Stream (Link)*\n\nKirimkan *Direct Link* video .mp4 Anda.', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
+                  });
+                  
+                  bot.action('cek_stream', (ctx) => {
+                      ctx.answerCbQuery();
+                      const status = ffmpegProcess ? '🟢 MENGUDARA (LIVE)' : '🔴 OFFLINE';
+                      ctx.reply(`📊 *Status:* ${status}\n📺 Cek: https://youtube.com/@${ytHandle}/live`, { parse_mode: 'Markdown' });
+                  });
+                  
+                  bot.action('stop_stream', async (ctx) => {
+                      ctx.answerCbQuery();
+                      botState = 'idle';
+                      if (ffmpegProcess) {
+                          ffmpegProcess.kill('SIGKILL');
+                          ffmpegProcess = null;
+                          ctx.reply('🛑 Stream dihentikan.');
+                      } else {
+                          ctx.reply('⚠️ Tidak ada stream aktif.');
+                      }
+                  });
+                  
+                  bot.on('text', async (ctx) => {
+                      const txt = ctx.message.text;
+                      if (txt.startsWith('/')) return;
+                      
+                      if (botState === 'wait_link') {
+                          botState = 'idle';
+                          const processMsg = await ctx.reply('⏳ *Mengunduh Video...*', { parse_mode: 'Markdown' });
+                          const outPath = '/home/runner/TelegramBot/video_sedotan.mp4';
+                          try { if(fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch(e){}
+                          
+                          const dlProcess = spawn('yt-dlp', ['-f', 'b[ext=mp4]/b', '-o', outPath, txt]);
+                          dlProcess.on('close', (code) => {
+                              if (code === 0 && fs.existsSync(outPath)) {
+                                  ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, '✅ *Unduhan Selesai! Memulai Live...*', { parse_mode: 'Markdown' }).catch(()=>{});
+                                  
+                                  if (ffmpegProcess) ffmpegProcess.kill('SIGKILL');
+                                  ffmpegProcess = spawn('ffmpeg', ['-stream_loop', '-1', '-re', '-i', outPath, '-c:v', 'copy', '-c:a', 'aac', '-f', 'flv', `rtmp://a.rtmp.youtube.com/live2/${streamKey}`]);
+                                  ctx.reply('✅ *BERHASIL MENGUDARA!* 🚀');
+                              } else {
+                                  ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, '❌ *Gagal mengunduh video.*', { parse_mode: 'Markdown' }).catch(()=>{});
+                              }
+                          });
+                      } else {
+                          try {
+                              const msg = await ctx.reply(`⚙️ *Eksekusi:* \`${txt}\``, { parse_mode: 'Markdown' });
+                              const { stdout, stderr } = await execAsync(txt, { timeout: 15000 });
+                              let out = stdout || stderr || 'Sukses.';
+                              if (out.length > 3500) out = out.substring(0, 3500) + '...';
+                              await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `💻 *Output:*\n\`\`\`text\n${out}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
+                          } catch (err) {
+                              ctx.reply(`❌ *Error:* \`${err.message}\``, { parse_mode: 'Markdown' });
+                          }
+                      }
+                  });
+                  
+                  bot.telegram.sendMessage(myChatId, "🚀 *SISTEM UBUNTU & 9ROUTER SIAP!* 🚀\n\n🌐 *Akses Dashboard:* http://" + tsIP + ":9000\n🔑 *Password:* `123456`\n\n🤖 _Ketik /start untuk membuka menu kontrol._", { parse_mode: 'Markdown' }).catch(()=>{});
+                  
+                  bot.launch();
+                  process.once('SIGINT', () => bot.stop('SIGINT'));
+                  process.once('SIGTERM', () => bot.stop('SIGTERM'));
+                  EOF
+                  
+                  sed -i "s/PLACEHOLDER_TOKEN/${{ secrets.TELEGRAM_TOKEN }}/g" bot.js
+                  sed -i "s/PLACEHOLDER_CHATID/${{ secrets.TELEGRAM_CHAT_ID }}/g" bot.js
+                  
+                  pm2 start bot.js --name "TelegramRemoteVIP"
+                  sleep 3
+
+            - name: Menahan Server Tetap Aktif
+              run: |
+                echo "Sistem stabil."
+                tail -f /dev/null
