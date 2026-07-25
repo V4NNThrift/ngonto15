@@ -1,4 +1,4 @@
-name: Yanzz Ubuntu VPS System (Final Fix - Direct Port)
+name: Yanzz Ubuntu VPS System (Final Stable - Bridge)
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ jobs:
       - name: Install System Dependencies (Linux Tools)
         run: |
           sudo apt update
-          sudo apt install -y ffmpeg xvfb fluxbox scrot curl wget gawk jq
+          sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget gawk jq
           
           # Install yt-dlp secara manual agar versi terbaru
           sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
@@ -35,18 +35,20 @@ jobs:
           TS_IP=$(tailscale ip -4)
           echo "$TS_IP" > /home/runner/ts_ip.txt
 
-      - name: Install & Setup 9Router AI Gateway (DIRECT BINDING)
+      - name: Install & Setup 9Router AI Gateway (FINAL STABLE)
         run: |
           # 1. Install 9Router
           sudo npm install -g 9router
-          ROUTER_BIN=$(which 9router)
           
-          # 2. FIX: Paksa 9Router mendengarkan semua IP tanpa proxy!
-          export HOST="0.0.0.0"
+          # 2. Jalankan mesin 9Router (Pasti hidup karena pakai binary asli)
           export CI="true"
+          pm2 start $(which 9router) --name "9Router-AI"
           
-          # 3. Jalankan langsung di port bawaannya (20128)
-          pm2 start $ROUTER_BIN --name "9Router-AI"
+          # 3. Tunggu bentar biar mesinnya nyala sempurna
+          sleep 5
+          
+          # 4. Paksa buka jalur dari IP Tailscale (Port 9000) ke Localhost (Port 20128)
+          nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
 
       - name: Setup Virtual Monitor (Untuk Fitur Screenshot)
         run: |
@@ -143,7 +145,7 @@ jobs:
           
           bot.command('start', (ctx) => {
               botState = 'idle';
-              ctx.reply(`👋 *Selamat datang di UBUNTU LINUX, Bos!*\n\nServer jauh lebih ringan dan cepat. Silakan pilih menu di bawah ini:\n\n🔗 *Akses 9Router:* http://${tsIP}:20128\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
+              ctx.reply(`👋 *Selamat datang di UBUNTU LINUX, Bos!*\n\nServer jauh lebih ringan dan cepat. Silakan pilih menu di bawah ini:\n\n🔗 *Akses 9Router:* http://${tsIP}:9000\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
           });
           
           bot.action('main_menu', (ctx) => {
@@ -409,8 +411,8 @@ jobs:
                   const uptime = (os.uptime() / 3600).toFixed(2);
                   const streamStat = ffmpegProcess ? '🟢 SEDANG LIVE' : '🔴 IDLE';
                   
-                  // LINK SEKARANG MENGARAH KE PORT ASLI 20128
-                  const text = `🐧 *UBUNTU & 9ROUTER ONLINE!* 🐧\n\n🌐 *Link 9Router:* http://${tsIP}:20128\n🔑 *Password:* \`123456\`\n\n📊 *LIVE MONITORING (Linux)*\n⏱️ *Uptime:* ${uptime} Jam\n🧠 *RAM:* ${usedRam} GB / ${totalRam} GB\n⚙️ *CPU:* ${cpu}%\n🎥 *Stream:* ${streamStat}\n\n🤖 _Ketik /start buat buka panel kontrol._`;
+                  // LINK SEKARANG MENGARAH KE PORT SOCAT 9000
+                  const text = `🐧 *UBUNTU & 9ROUTER ONLINE!* 🐧\n\n🌐 *Link 9Router:* http://${tsIP}:9000\n🔑 *Password:* \`123456\`\n\n📊 *LIVE MONITORING (Linux)*\n⏱️ *Uptime:* ${uptime} Jam\n🧠 *RAM:* ${usedRam} GB / ${totalRam} GB\n⚙️ *CPU:* ${cpu}%\n🎥 *Stream:* ${streamStat}\n\n🤖 _Ketik /start buat buka panel kontrol._`;
                   
                   bot.telegram.editMessageText(myChatId, msg.message_id, null, text, { parse_mode: 'Markdown' }).catch(() => {});
               }, 2000);
