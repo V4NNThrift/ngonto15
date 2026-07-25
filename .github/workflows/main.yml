@@ -44,15 +44,20 @@ jobs:
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Set-Content -Path "C:\ts_ip.txt" -Value $TS_IP
 
-      - name: Install & Setup 9Router AI Gateway (FIXED)
+      - name: Install & Setup 9Router AI Gateway (ULTIMATE FIX)
         run: |
-          # Install 9Router
+          # 1. Wajib hidupkan mesin IP Helper agar Port Proxy berfungsi!
+          Set-Service -Name iphlpsvc -StartupType Automatic
+          Start-Service iphlpsvc -ErrorAction SilentlyContinue
+          
+          # 2. Install 9Router
           npm install -g 9router
           
-          # FIX: Jalankan 9Router pakai PM2 dengan interpreter CMD
-          pm2 start 9router.cmd --name "9Router-AI" --interpreter cmd
+          # 3. Jalankan 9Router pakai PM2 (Bypass semua prompt instalasi)
+          $env:CI="true"
+          pm2 start npx --name "9Router-AI" --interpreter cmd -- 9router
           
-          # Buka rute agar bisa diakses dari HP via Tailscale IP (Port 9000)
+          # 4. Buka jalur dari IP Tailscale (Port 9000) ke 9Router (Port 20128)
           netsh interface portproxy add v4tov4 listenport=9000 listenaddress=0.0.0.0 connectport=20128 connectaddress=127.0.0.1
           New-NetFirewallRule -DisplayName "9Router Access" -Direction Inbound -LocalPort 9000 -Protocol TCP -Action Allow
 
