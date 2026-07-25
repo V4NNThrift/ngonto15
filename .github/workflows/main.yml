@@ -1,4 +1,4 @@
-name: Yanzz Windows VPS System (Production Edition)
+name: Yanzz Windows VPS System (Ultimate V8 - Auto Notify)
 
 on:
   workflow_dispatch:
@@ -44,6 +44,18 @@ jobs:
           $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
           Set-Content -Path "C:\ts_ip.txt" -Value $TS_IP
 
+      - name: Install & Setup 9Router AI Gateway
+        run: |
+          # Install 9Router
+          npm install -g 9router
+          
+          # Jalankan 9Router pakai PM2
+          pm2 start npx --name "9Router-AI" -- 9router
+          
+          # Buka rute agar bisa diakses dari HP via Tailscale IP (Port 9000)
+          netsh interface portproxy add v4tov4 listenport=9000 listenaddress=0.0.0.0 connectport=20128 connectaddress=127.0.0.1
+          New-NetFirewallRule -DisplayName "9Router Access" -Direction Inbound -LocalPort 9000 -Protocol TCP -Action Allow
+
       - name: Merakit & Menjalankan Bot Telegram Enterprise
         run: |
           mkdir C:\TelegramBot
@@ -70,12 +82,10 @@ jobs:
           let botState = 'idle';
           let streamInfo = { source: 'Tidak ada', resolution: 'Copy', audio: 'Unmuted' };
           
-          // Middleware Keamanan
           bot.use((ctx, next) => {
               if (ctx.from && ctx.from.id.toString() === myChatId) return next();
           });
           
-          // Helper: Eksekusi Pesan Dinamis (Menjamin Flow Pesan Rapi)
           async function runTask(ctx, loadingText, taskFn) {
               const msg = await ctx.reply(`⏳ *Memproses:* ${loadingText}...`, { parse_mode: 'Markdown' });
               try {
@@ -86,7 +96,6 @@ jobs:
               }
           }
           
-          // --- UI MENUS ---
           const menuUtama = Markup.inlineKeyboard([
               [Markup.button.callback('📺 Menu Streaming', 'menu_stream'), Markup.button.callback('⚙️ Sistem & Info', 'menu_sistem')],
               [Markup.button.callback('📂 File Manager', 'menu_file'), Markup.button.callback('🌐 Jaringan & Tools', 'menu_tools')],
@@ -101,7 +110,7 @@ jobs:
           ]);
           
           const menuSistem = Markup.inlineKeyboard([
-              [Markup.button.callback('📊 Status Hardware (RAM/CPU/Disk)', 'cek_hardware')],
+              [Markup.button.callback('📊 Status Hardware (RAM/CPU)', 'cek_hardware')],
               [Markup.button.callback('📈 Top Proses (RAM)', 'top_ram'), Markup.button.callback('📈 Top Proses (CPU)', 'top_cpu')],
               [Markup.button.callback('⏱️ Uptime & OS Info', 'sys_info'), Markup.button.callback('« Kembali', 'main_menu')]
           ]);
@@ -118,10 +127,9 @@ jobs:
               [Markup.button.callback('🔄 Restart Bot', 'restart_bot'), Markup.button.callback('« Kembali', 'main_menu')]
           ]);
           
-          // --- NAVIGATION HANDLERS ---
           bot.command('start', (ctx) => {
               botState = 'idle';
-              ctx.reply(`👋 *Selamat datang kembali, Bos!*\n\nSistem VPS saat ini dalam keadaan aktif. Silakan pilih menu manajemen di bawah ini:`, { parse_mode: 'Markdown', ...menuUtama });
+              ctx.reply(`👋 *Selamat datang kembali, Bos!*\n\nSistem VPS saat ini dalam keadaan aktif. Silakan pilih menu manajemen di bawah ini:\n\n🔗 *Akses 9Router:* http://${tsIP}:9000\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
           });
           
           bot.action('main_menu', (ctx) => {
@@ -150,9 +158,6 @@ jobs:
               ctx.answerCbQuery();
           });
           
-          // --- FEATURE IMPLEMENTATIONS ---
-          
-          // 1. Screenshot RDP (Menggunakan NirCmd - Dijamin Berhasil)
           bot.action('ss_rdp', async (ctx) => {
               ctx.answerCbQuery('Mengambil screenshot...');
               await runTask(ctx, 'Menangkap layar RDP', async () => {
@@ -165,7 +170,6 @@ jobs:
               });
           });
           
-          // 2. Hardware Diagnostics (Telah diperbaiki menggunakan PowerShell Native)
           bot.action('cek_hardware', async (ctx) => {
               ctx.answerCbQuery();
               await runTask(ctx, 'Mengumpulkan data hardware', async () => {
@@ -173,19 +177,16 @@ jobs:
                   const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
                   const cpuCount = os.cpus().length;
                   const cpuModel = os.cpus()[0].model;
-                  
                   let diskInfo = 'Gagal membaca disk';
                   try {
                       const { stdout } = await execAsync('powershell -Command "Get-Volume -DriveLetter C | Select-Object @{Name=\'FreeGB\';Expression={[math]::Round($_.SizeRemaining/1GB,2)}}, @{Name=\'TotalGB\';Expression={[math]::Round($_.Size/1GB,2)}} | ConvertTo-Json"');
                       const disk = JSON.parse(stdout);
                       diskInfo = `${disk.FreeGB} GB Tersisa / ${disk.TotalGB} GB Total`;
                   } catch(e) {}
-                  
                   return `*Status Hardware Terkini:*\n\n🧠 *RAM:* ${freeRam} GB / ${totalRam} GB\n💾 *Penyimpanan (C:):* ${diskInfo}\n⚙️ *CPU:* ${cpuCount} Core (${cpuModel})`;
               });
           });
           
-          // 3. Top Proses
           bot.action('top_ram', async (ctx) => {
               ctx.answerCbQuery();
               await runTask(ctx, 'Menganalisis penggunaan RAM', async () => {
@@ -202,7 +203,6 @@ jobs:
               });
           });
           
-          // 4. File Management
           bot.action('ls_bot', async (ctx) => {
               ctx.answerCbQuery();
               await runTask(ctx, 'Membaca direktori', async () => {
@@ -227,7 +227,6 @@ jobs:
               });
           });
           
-          // 5. Tools & Network
           bot.action('pub_ip', async (ctx) => {
               ctx.answerCbQuery();
               await runTask(ctx, 'Mengecek Public IP Server', async () => {
@@ -267,10 +266,9 @@ jobs:
               });
           });
           
-          // --- STREAMING CONTROLS ---
           bot.action('src_link', (ctx) => {
               botState = 'wait_link';
-              ctx.editMessageText('🌐 *Mode Stream (Link)*\n\nKirimkan *Direct Link* atau *Tautan Google Drive* (pastikan hak akses publik).', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
+              ctx.editMessageText('🌐 *Mode Stream (Link)*\n\nKirimkan *Direct Link* dari Tencent COS yang udah lu buat.', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
           });
           
           bot.action('src_local', (ctx) => {
@@ -302,8 +300,6 @@ jobs:
                   } else {
                       info += 'Tidak ada proses siaran yang sedang berjalan saat ini.\n';
                   }
-                  
-                  // Safe Cleanup
                   await new Promise(resolve => setTimeout(resolve, 1500)); 
                   const outPath = 'C:\\TelegramBot\\video_sedotan.mp4';
                   if (fs.existsSync(outPath)) {
@@ -352,7 +348,6 @@ jobs:
               });
           }
           
-          // --- TEXT COMMANDS & ARBITRARY EXECUTOR ---
           bot.on('text', async (ctx) => {
               const txt = ctx.message.text;
               if (txt.startsWith('/')) return;
@@ -392,9 +387,7 @@ jobs:
                           ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, `❌ *Gagal Mengunduh Video*\nPastikan tautan valid dan bersifat publik.\n\n*Log Error:*\n\`\`\`text\n${shortErr}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
                       }
                   });
-                  
               } else {
-                  // Arbitrary CMD Executor (Fitur Pro - Eksekusi Terminal via Chat)
                   try {
                       const msg = await ctx.reply(`⚙️ *Menjalankan perintah:* \`${txt}\``, { parse_mode: 'Markdown' });
                       const { stdout, stderr } = await execAsync(txt, { timeout: 15000 });
@@ -407,9 +400,11 @@ jobs:
               }
           });
           
-          // Anti-Crash Handler untuk Node.js
           process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
           process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
+          
+          // --- FITUR AUTO-NOTIFY 9ROUTER ---
+          bot.telegram.sendMessage(myChatId, `🔥 *SERVER & 9ROUTER ONLINE!* 🔥\n\nVPS lu berhasil nyala dan 9Router udah siap disiksa. Langsung gas buka dashboard-nya di HP lu:\n\n🌐 *Link 9Router:* http://${tsIP}:9000\n🔑 *Password:* \`123456\`\n\n🤖 _Ketik /start buat buka panel kontrol bot._`, { parse_mode: 'Markdown' }).catch(()=>{});
           
           bot.launch();
           process.once('SIGINT', () => bot.stop('SIGINT'));
