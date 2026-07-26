@@ -1,81 +1,62 @@
-name: Yanzz Ubuntu VPS System (The God Mode Ultimate Edition)
+name: Yanzz Windows VPS System (Production Edition)
 
 on:
   workflow_dispatch:
 
 jobs:
-  ubuntu-vps:
-    runs-on: ubuntu-latest
+  windows-vps:
+    runs-on: windows-latest
     timeout-minutes: 3600
 
     steps:
       - name: Set Timezone ke Indonesia (WIB)
-        run: sudo timedatectl set-timezone Asia/Jakarta
+        run: Set-TimeZone -Id "SE Asia Standard Time"
 
-      - name: Install System Dependencies (God Mode Tools)
-        run: |
-          sudo apt update
-          sudo apt install -y ffmpeg socat xvfb fluxbox scrot curl wget gawk jq tmux psmisc speedtest-cli neofetch htop
-          
-          sudo wget https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
+      - name: Konfigurasi Password Akun RDP
+        run: net user runneradmin Evan123456
 
-      - name: Setup Node.js & PM2
+      - name: Install Environment & Tools
         uses: actions/setup-node@v3
         with:
           node-version: '20'
-      - run: sudo npm install -g pm2
 
-      - name: Setup Jaringan Tailscale (VPN)
+      - name: Install Dependencies Khusus (PM2, FFmpeg, NirCmd)
         run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-ubuntu-${GITHUB_RUN_ID}
-          
-          TS_IP=$(tailscale ip -4)
-          echo "$TS_IP" > /home/runner/ts_ip.txt
+          npm install -g pm2
+          choco install ffmpeg -y
+          choco install yt-dlp -y
+          choco install nircmd -y
+          choco install vb-cable -y
 
-      - name: Install & Setup 9Router AI Gateway (FINAL FIX)
+      - name: Optimasi Performa Windows
         run: |
-          sudo apt-get install -y build-essential python3
+          reg add "HKEY_CURRENT_USER\Control Panel\Colors" /v Background /t REG_SZ /d "0 0 0" /f >nul
+          reg add "HKEY_CURRENT_USER\Control Panel\Desktop" /v Wallpaper /t REG_SZ /d "" /f >nul
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 2 /f >nul
+          powercfg -setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c >nul
+
+      - name: Setup Jaringan Tailscale
+        run: |
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
+          Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/quiet" -Wait
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-windows-${env:GITHUB_RUN_ID}
           
-          mkdir -p /home/runner/router_app
-          cd /home/runner/router_app
+          $TS_IP = & "C:\Program Files\Tailscale\tailscale.exe" ip -4
+          Set-Content -Path "C:\ts_ip.txt" -Value $TS_IP
+
+      - name: Merakit & Menjalankan Bot Telegram Enterprise
+        run: |
+          mkdir C:\TelegramBot
+          cd C:\TelegramBot
           npm init -y
-          npm install 9router better-sqlite3 sqlite3
+          npm install telegraf
           
-          sudo fuser -k 20128/tcp || true
-          
-          export CI=""
-          export GITHUB_ACTIONS=""
-          export CLI_TOKEN="YanzzVIP123"
-          
-          tmux new-session -d -s router_session 'npx 9router'
-          sleep 3
-          tmux send-keys -t router_session Enter
-          sleep 5
-          
-          nohup socat TCP-LISTEN:9000,fork,reuseaddr,bind=0.0.0.0 TCP:127.0.0.1:20128 > /dev/null 2>&1 &
-
-      - name: Setup Virtual Monitor
-        run: |
-          Xvfb :99 -screen 0 1280x720x24 &
-          sleep 2
-          DISPLAY=:99 fluxbox &
-
-      - name: Merakit & Menjalankan Bot Telegram (God Mode Engine)
-        run: |
-          mkdir -p /home/runner/TelegramBot
-          cd /home/runner/TelegramBot
-          npm init -y
-          npm install telegraf axios
-          
-          cat << 'EOF' > bot.js
+          $botCode = @'
           const { Telegraf, Markup } = require('telegraf');
           const { spawn, execSync, exec } = require('child_process');
           const os = require('os');
           const fs = require('fs');
           const util = require('util');
-          const axios = require('axios');
           const execAsync = util.promisify(exec);
           
           const bot = new Telegraf('PLACEHOLDER_TOKEN');
@@ -83,21 +64,18 @@ jobs:
           
           let streamKey = '0ahd-k6zv-xuez-ww2r-4mjf';
           const ytHandle = 'Yanzz'; 
-          const tsIP = fs.existsSync('/home/runner/ts_ip.txt') ? fs.readFileSync('/home/runner/ts_ip.txt', 'utf8').trim() : 'Tidak diketahui';
-          
-          // Konfigurasi AI & Dynamic API Key
-          let AI_API_KEY = 'sk-966967111f691a52-u7kzei-14a61258';
-          const AI_ENDPOINT = 'http://127.0.0.1:20128/v1/chat/completions';
-          let chatHistory = [];
+          const tsIP = fs.existsSync('C:\\ts_ip.txt') ? fs.readFileSync('C:\\ts_ip.txt', 'utf8').trim() : 'Tidak diketahui';
           
           let ffmpegProcess = null;
           let botState = 'idle';
           let streamInfo = { source: 'Tidak ada', resolution: 'Copy', audio: 'Unmuted' };
           
+          // Middleware Keamanan
           bot.use((ctx, next) => {
               if (ctx.from && ctx.from.id.toString() === myChatId) return next();
           });
           
+          // Helper: Eksekusi Pesan Dinamis (Menjamin Flow Pesan Rapi)
           async function runTask(ctx, loadingText, taskFn) {
               const msg = await ctx.reply(`⏳ *Memproses:* ${loadingText}...`, { parse_mode: 'Markdown' });
               try {
@@ -108,218 +86,236 @@ jobs:
               }
           }
           
+          // --- UI MENUS ---
           const menuUtama = Markup.inlineKeyboard([
-              [Markup.button.callback('🤖 Mode Chat AI', 'mode_ai'), Markup.button.callback('📺 Menu Streaming', 'menu_stream')],
-              [Markup.button.callback('⚙️ Sistem & Info', 'menu_sistem'), Markup.button.callback('📂 File Manager', 'menu_file')],
-              [Markup.button.callback('🌐 Jaringan & Tools', 'menu_tools'), Markup.button.callback('📜 Cek Layar 9Router', 'log_router')]
-          ]);
-          
-          const menuAi = Markup.inlineKeyboard([
-              [Markup.button.callback('🔑 Ganti API Key AI', 'change_apikey'), Markup.button.callback('🧹 Reset Memori Chat', 'reset_ai')],
-              [Markup.button.callback('« Kembali ke Beranda', 'main_menu')]
+              [Markup.button.callback('📺 Menu Streaming', 'menu_stream'), Markup.button.callback('⚙️ Sistem & Info', 'menu_sistem')],
+              [Markup.button.callback('📂 File Manager', 'menu_file'), Markup.button.callback('🌐 Jaringan & Tools', 'menu_tools')],
+              [Markup.button.callback('❓ Panduan Penggunaan', 'help')]
           ]);
           
           const menuStream = Markup.inlineKeyboard([
               [Markup.button.callback('🌐 Stream via Link', 'src_link'), Markup.button.callback('📁 Stream via Lokal', 'src_local')],
-              [Markup.button.callback('🛑 Hentikan Stream', 'stop_stream'), Markup.button.callback('📊 Status Stream', 'cek_stream')],
+              [Markup.button.callback('🛑 Hentikan Stream & Cleanup', 'stop_stream')],
+              [Markup.button.callback('🔑 Ganti Stream Key', 'ganti_key'), Markup.button.callback('📊 Status Stream', 'cek_stream')],
               [Markup.button.callback('« Kembali ke Beranda', 'main_menu')]
           ]);
           
           const menuSistem = Markup.inlineKeyboard([
-              [Markup.button.callback('📊 Status Hardware', 'cek_hardware'), Markup.button.callback('⏱️ Uptime & OS', 'sys_info')],
-              [Markup.button.callback('« Kembali', 'main_menu')]
+              [Markup.button.callback('📊 Status Hardware (RAM/CPU/Disk)', 'cek_hardware')],
+              [Markup.button.callback('📈 Top Proses (RAM)', 'top_ram'), Markup.button.callback('📈 Top Proses (CPU)', 'top_cpu')],
+              [Markup.button.callback('⏱️ Uptime & OS Info', 'sys_info'), Markup.button.callback('« Kembali', 'main_menu')]
           ]);
           
           const menuFile = Markup.inlineKeyboard([
-              [Markup.button.callback('📂 Cek Folder Bot', 'ls_bot'), Markup.button.callback('🧹 Bersihkan Temp', 'clean_temp')],
-              [Markup.button.callback('📥 Download URL ke VPS', 'dl_file'), Markup.button.callback('📤 Upload File ke Telegram', 'up_file')],
+              [Markup.button.callback('📂 Cek Folder Bot', 'ls_bot'), Markup.button.callback('🧹 Bersihkan Cache (Temp)', 'clean_temp')],
+              [Markup.button.callback('🗑️ Kosongkan Recycle Bin', 'empty_bin')],
               [Markup.button.callback('« Kembali ke Beranda', 'main_menu')]
           ]);
           
           const menuTools = Markup.inlineKeyboard([
-              [Markup.button.callback('📸 Screenshot Server', 'ss_rdp'), Markup.button.callback('📶 Ping Test', 'ping_test')],
-              [Markup.button.callback('🚀 Speedtest Server', 'speedtest'), Markup.button.callback('🌐 Cek Public IP', 'pub_ip')],
+              [Markup.button.callback('📸 Screenshot RDP', 'ss_rdp'), Markup.button.callback('🔒 Lock RDP', 'lock_rdp')],
+              [Markup.button.callback('🌐 Cek Public IP', 'pub_ip'), Markup.button.callback('📶 Ping Test', 'ping_test')],
               [Markup.button.callback('🔄 Restart Bot', 'restart_bot'), Markup.button.callback('« Kembali', 'main_menu')]
           ]);
           
+          // --- NAVIGATION HANDLERS ---
           bot.command('start', (ctx) => {
               botState = 'idle';
-              ctx.reply(`👋 *Selamat datang di Ubuntu GOD MODE, Bos!*\n\nSemua fitur aktif dan siap disiksa.\n\n🔗 *Akses 9Router:* http://${tsIP}:9000\n🔑 *Default Pass:* \`123456\``, { parse_mode: 'Markdown', ...menuUtama });
+              ctx.reply(`👋 *Selamat datang kembali, Bos!*\n\nSistem VPS saat ini dalam keadaan aktif. Silakan pilih menu manajemen di bawah ini:`, { parse_mode: 'Markdown', ...menuUtama });
           });
           
           bot.action('main_menu', (ctx) => {
               botState = 'idle';
-              ctx.editMessageText('🤖 *Panel Kontrol Utama (God Mode):*', { parse_mode: 'Markdown', ...menuUtama }).catch(()=>{});
+              ctx.editMessageText('🤖 *Panel Kontrol Utama:*\nSilakan pilih kategori operasi:', { parse_mode: 'Markdown', ...menuUtama }).catch(()=>{});
               ctx.answerCbQuery();
-          });
-          
-          bot.action('mode_ai', (ctx) => {
-              botState = 'ai_chat';
-              ctx.editMessageText(`🤖 *MODE AI AKTIF!*\n\nAI diprogram memberikan blok kode murni siap *copy*. Key aktif saat ini:\n\`${AI_API_KEY}\``, {
-                  parse_mode: 'Markdown',
-                  ...menuAi
-              }).catch(()=>{});
-              ctx.answerCbQuery('Mode AI Aktif!');
-          });
-          
-          bot.action('change_apikey', (ctx) => {
-              botState = 'wait_new_key';
-              ctx.editMessageText('🔑 *Ganti API Key AI*\n\nSilakan kirimkan API Key 9Router yang baru di chat:', {
-                  parse_mode: 'Markdown',
-                  ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'mode_ai')]])
-              }).catch(()=>{});
-              ctx.answerCbQuery();
-          });
-          
-          bot.action('reset_ai', (ctx) => {
-              chatHistory = [];
-              ctx.answerCbQuery('Memori chat berhasil dibersihkan!');
           });
           
           bot.action('menu_stream', (ctx) => {
-              ctx.editMessageText('📺 *Manajemen Streaming YouTube:*', { parse_mode: 'Markdown', ...menuStream }).catch(()=>{});
+              ctx.editMessageText('📺 *Manajemen Streaming:*\nAtur siaran YouTube Anda di sini.', { parse_mode: 'Markdown', ...menuStream }).catch(()=>{});
               ctx.answerCbQuery();
           });
           
           bot.action('menu_sistem', (ctx) => {
-              ctx.editMessageText('⚙️ *Manajemen Sistem:*', { parse_mode: 'Markdown', ...menuSistem }).catch(()=>{});
+              ctx.editMessageText('⚙️ *Manajemen Sistem & Hardware:*\nMonitor kesehatan server Anda.', { parse_mode: 'Markdown', ...menuSistem }).catch(()=>{});
               ctx.answerCbQuery();
           });
           
           bot.action('menu_file', (ctx) => {
-              ctx.editMessageText('📂 *File Manager Master:*', { parse_mode: 'Markdown', ...menuFile }).catch(()=>{});
+              ctx.editMessageText('📂 *Manajemen Penyimpanan & File:*\nBersihkan sampah dan cek direktori.', { parse_mode: 'Markdown', ...menuFile }).catch(()=>{});
               ctx.answerCbQuery();
           });
           
           bot.action('menu_tools', (ctx) => {
-              ctx.editMessageText('🌐 *Alat Jaringan & C&C:*', { parse_mode: 'Markdown', ...menuTools }).catch(()=>{});
+              ctx.editMessageText('🌐 *Alat Jaringan & Keamanan:*\nUtilitas RDP dan *network*.', { parse_mode: 'Markdown', ...menuTools }).catch(()=>{});
               ctx.answerCbQuery();
           });
           
-          bot.action('speedtest', async (ctx) => {
-              ctx.answerCbQuery('Menguji kecepatan internet VPS...');
-              await runTask(ctx, 'Speedtest sedang berjalan (±15 detik)', async () => {
-                  const { stdout } = await execAsync('speedtest-cli --simple');
-                  return `🚀 *Hasil Speedtest:*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+          // --- FEATURE IMPLEMENTATIONS ---
+          
+          // 1. Screenshot RDP (Menggunakan NirCmd - Dijamin Berhasil)
+          bot.action('ss_rdp', async (ctx) => {
+              ctx.answerCbQuery('Mengambil screenshot...');
+              await runTask(ctx, 'Menangkap layar RDP', async () => {
+                  const ssPath = 'C:\\TelegramBot\\screen.png';
+                  if(fs.existsSync(ssPath)) fs.unlinkSync(ssPath);
+                  await execAsync(`nircmd savescreenshot "${ssPath}"`);
+                  if(!fs.existsSync(ssPath)) throw new Error('File gambar tidak dapat dibuat oleh sistem.');
+                  await ctx.replyWithPhoto({ source: ssPath }, { caption: '📸 *Layar RDP Saat Ini*', parse_mode: 'Markdown' });
+                  return 'Tangkapan layar berhasil dikirim.';
               });
           });
           
-          bot.action('dl_file', (ctx) => {
-              botState = 'wait_dl_file';
-              ctx.editMessageText('📥 *Download URL ke VPS*\n\nKirimkan direct link file yang mau di-download.', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_file')]]) }).catch(()=>{});
+          // 2. Hardware Diagnostics (Telah diperbaiki menggunakan PowerShell Native)
+          bot.action('cek_hardware', async (ctx) => {
+              ctx.answerCbQuery();
+              await runTask(ctx, 'Mengumpulkan data hardware', async () => {
+                  const freeRam = (os.freemem() / 1024 / 1024 / 1024).toFixed(2);
+                  const totalRam = (os.totalmem() / 1024 / 1024 / 1024).toFixed(2);
+                  const cpuCount = os.cpus().length;
+                  const cpuModel = os.cpus()[0].model;
+                  
+                  let diskInfo = 'Gagal membaca disk';
+                  try {
+                      const { stdout } = await execAsync('powershell -Command "Get-Volume -DriveLetter C | Select-Object @{Name=\'FreeGB\';Expression={[math]::Round($_.SizeRemaining/1GB,2)}}, @{Name=\'TotalGB\';Expression={[math]::Round($_.Size/1GB,2)}} | ConvertTo-Json"');
+                      const disk = JSON.parse(stdout);
+                      diskInfo = `${disk.FreeGB} GB Tersisa / ${disk.TotalGB} GB Total`;
+                  } catch(e) {}
+                  
+                  return `*Status Hardware Terkini:*\n\n🧠 *RAM:* ${freeRam} GB / ${totalRam} GB\n💾 *Penyimpanan (C:):* ${diskInfo}\n⚙️ *CPU:* ${cpuCount} Core (${cpuModel})`;
+              });
           });
           
-          bot.action('up_file', (ctx) => {
-              botState = 'wait_up_file';
-              ctx.editMessageText('📤 *Upload ke Telegram*\n\nKetik path file di VPS. Contoh: `/home/runner/TelegramBot/file.txt`', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_file')]]) }).catch(()=>{});
+          // 3. Top Proses
+          bot.action('top_ram', async (ctx) => {
+              ctx.answerCbQuery();
+              await runTask(ctx, 'Menganalisis penggunaan RAM', async () => {
+                  const { stdout } = await execAsync('powershell -Command "Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 5 Name, @{Name=\'RAM(MB)\';Expression={[math]::Round($_.WorkingSet/1MB,2)}} | Format-Table -AutoSize"');
+                  return `*5 Aplikasi Paling Menguras RAM:*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+              });
           });
           
+          bot.action('top_cpu', async (ctx) => {
+              ctx.answerCbQuery();
+              await runTask(ctx, 'Menganalisis beban CPU', async () => {
+                  const { stdout } = await execAsync('powershell -Command "Get-Process | Sort-Object CPU -Descending | Select-Object -First 5 Name, CPU | Format-Table -AutoSize"');
+                  return `*5 Aplikasi dengan Beban CPU Tertinggi:*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+              });
+          });
+          
+          // 4. File Management
           bot.action('ls_bot', async (ctx) => {
               ctx.answerCbQuery();
               await runTask(ctx, 'Membaca direktori', async () => {
-                  const files = fs.readdirSync('/home/runner/TelegramBot').join('\n');
-                  return `*Isi Folder Bot:*\n\`\`\`text\n${files || 'Kosong'}\n\`\`\``;
+                  const files = fs.readdirSync('C:\\TelegramBot').join('\n');
+                  return `*Isi Folder C:\\TelegramBot:*\n\`\`\`text\n${files || 'Folder kosong'}\n\`\`\``;
               });
           });
           
           bot.action('clean_temp', async (ctx) => {
               ctx.answerCbQuery();
-              await runTask(ctx, 'Membersihkan sistem', async () => {
-                  await execAsync('rm -rf /tmp/*');
-                  return 'Cache sistem berhasil dibersihkan.';
+              await runTask(ctx, 'Membersihkan Cache Windows', async () => {
+                  await execAsync('powershell -Command "Remove-Item -Path $env:TEMP\\* -Recurse -Force -ErrorAction SilentlyContinue"');
+                  return 'Folder Temp berhasil dikosongkan. Sistem lebih ringan.';
               });
           });
           
-          bot.action('log_router', async (ctx) => {
+          bot.action('empty_bin', async (ctx) => {
               ctx.answerCbQuery();
-              try {
-                  const rLog = execSync('tmux capture-pane -t router_session -p | tail -n 20').toString().trim() || 'Kosong.';
-                  await ctx.reply(`📜 *Layar Terminal 9Router Asli:*\n\`\`\`text\n${rLog}\n\`\`\``, { parse_mode: 'Markdown' });
-              } catch (err) {
-                  await ctx.reply(`❌ Error: ${err.message}`);
-              }
-          });
-          
-          bot.action('ss_rdp', async (ctx) => {
-              ctx.answerCbQuery();
-              await runTask(ctx, 'Menangkap layar Virtual X11', async () => {
-                  const ssPath = '/home/runner/TelegramBot/screen.png';
-                  if(fs.existsSync(ssPath)) fs.unlinkSync(ssPath);
-                  await execAsync(`DISPLAY=:99 scrot ${ssPath}`);
-                  await ctx.replyWithPhoto({ source: ssPath }, { caption: '📸 *Layar Virtual Ubuntu*', parse_mode: 'Markdown' });
-                  return 'Tangkapan layar terkirim.';
+              await runTask(ctx, 'Mengosongkan tempat sampah', async () => {
+                  await execAsync('powershell -Command "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"');
+                  return 'Recycle Bin telah dikosongkan secara permanen.';
               });
           });
           
-          bot.action('cek_hardware', async (ctx) => {
-              ctx.answerCbQuery();
-              await runTask(ctx, 'Mengumpulkan data hardware', async () => {
-                  const freeRam = (os.freemem() / 1073741824).toFixed(2);
-                  const totalRam = (os.totalmem() / 1073741824).toFixed(2);
-                  let diskInfo = 'Gagal membaca disk';
-                  try {
-                      const { stdout } = await execAsync(`df -h / | awk 'NR==2 {print $4 " Tersisa / " $2 " Total"}'`);
-                      diskInfo = stdout.trim();
-                  } catch(e) {}
-                  return `*Hardware Stats:*\n\n🧠 *RAM:* ${freeRam} GB / ${totalRam} GB\n💾 *Disk:* ${diskInfo}\n⚙️ *CPU:* ${os.cpus().length} Core`;
-              });
-          });
-          
+          // 5. Tools & Network
           bot.action('pub_ip', async (ctx) => {
               ctx.answerCbQuery();
-              await runTask(ctx, 'Mengecek Public IP', async () => {
+              await runTask(ctx, 'Mengecek Public IP Server', async () => {
                   const { stdout } = await execAsync('curl -s ifconfig.me');
-                  return `🌐 *IP Publik:* \`${stdout.trim()}\`\n🔒 *IP Tailscale:* \`${tsIP}\``;
+                  return `🌐 *IP Publik Server:* \`${stdout.trim()}\`\n🔒 *IP Tailscale:* \`${tsIP}\``;
               });
           });
           
           bot.action('ping_test', async (ctx) => {
               ctx.answerCbQuery();
-              await runTask(ctx, 'Uji jaringan', async () => {
-                  const { stdout } = await execAsync('ping -c 4 8.8.8.8');
-                  return `📶 *Ping Result:*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+              await runTask(ctx, 'Mengecek stabilitas jaringan', async () => {
+                  const { stdout } = await execAsync('ping 8.8.8.8 -n 4');
+                  return `📶 *Hasil Uji Jaringan (Google DNS):*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+              });
+          });
+          
+          bot.action('lock_rdp', async (ctx) => {
+              ctx.answerCbQuery();
+              await runTask(ctx, 'Mengunci sesi Desktop', async () => {
+                  await execAsync('rundll32.exe user32.dll,LockWorkStation');
+                  return 'Sesi RDP telah dikunci untuk keamanan.';
               });
           });
           
           bot.action('restart_bot', async (ctx) => {
-              ctx.answerCbQuery('Merestart bot...');
+              ctx.answerCbQuery('Merestart sistem...');
+              ctx.reply('🔄 Menginisiasi *restart* pada modul bot. Harap tunggu beberapa detik...', { parse_mode: 'Markdown' });
               setTimeout(() => { exec('pm2 restart TelegramRemoteVIP'); }, 1500);
           });
           
           bot.action('sys_info', async (ctx) => {
               ctx.answerCbQuery();
-              await runTask(ctx, 'Menjalankan Neofetch', async () => {
-                  const { stdout } = await execAsync('neofetch --stdout');
-                  return `🖥️ *System Info:*\n\`\`\`text\n${stdout.trim()}\n\`\`\``;
+              await runTask(ctx, 'Menyusun informasi sistem', async () => {
+                  const uptimeHours = (os.uptime() / 3600).toFixed(2);
+                  const osInfo = `${os.type()} ${os.release()}`;
+                  return `⏱️ *Uptime Server:* ${uptimeHours} Jam\n🖥️ *Sistem Operasi:* ${osInfo}\n🔧 *Arsitektur:* ${os.arch()}`;
               });
           });
           
+          // --- STREAMING CONTROLS ---
           bot.action('src_link', (ctx) => {
               botState = 'wait_link';
-              ctx.editMessageText('🌐 *Mode Stream (Link)*\n\nKirimkan direct link video .mp4.', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
+              ctx.editMessageText('🌐 *Mode Stream (Link)*\n\nKirimkan *Direct Link* atau *Tautan Google Drive* (pastikan hak akses publik).', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
           });
           
           bot.action('src_local', (ctx) => {
               botState = 'wait_local';
-              ctx.editMessageText('📁 *Mode Stream (Lokal)*\n\nKetik path video di VPS. Contoh: `/home/runner/video.mp4`', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
+              ctx.editMessageText('📁 *Mode Stream (Lokal)*\n\nKetik path video yang ada di RDP. Contoh: `C:\\live.mp4`', { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
+          });
+          
+          bot.action('ganti_key', (ctx) => {
+              botState = 'wait_key';
+              ctx.editMessageText(`🔑 *Ganti Stream Key*\n\nKey saat ini: \`${streamKey}\`\n\nSilakan ketik dan kirimkan *Stream Key* Anda yang baru:`, { parse_mode: 'Markdown', ...Markup.inlineKeyboard([[Markup.button.callback('« Batal', 'menu_stream')]]) }).catch(()=>{});
           });
           
           bot.action('cek_stream', (ctx) => {
               ctx.answerCbQuery();
               const status = ffmpegProcess ? '🟢 MENGUDARA (LIVE)' : '🔴 OFFLINE';
-              ctx.reply(`📊 *Status Stream:* ${status}\n📺 Cek: https://youtube.com/@${ytHandle}/live`, { parse_mode: 'Markdown' });
+              ctx.reply(`📊 *Detail Streaming Saat Ini:*\n\nStatus: *${status}*\nSumber Video: *${streamInfo.source}*\nMode Codec: *${streamInfo.resolution}*\n\n📺 Cek langsung: https://youtube.com/@${ytHandle}/live`, { parse_mode: 'Markdown' });
           });
           
           bot.action('stop_stream', async (ctx) => {
               ctx.answerCbQuery();
               botState = 'idle';
-              if (ffmpegProcess) {
-                  ffmpegProcess.kill('SIGKILL');
-                  ffmpegProcess = null;
-                  ctx.reply('🛑 Stream berhasil dihentikan.');
-              } else {
-                  ctx.reply('⚠️ Tidak ada stream aktif.');
-              }
+              await runTask(ctx, 'Menghentikan transmisi dan membersihkan sistem', async () => {
+                  let info = '';
+                  if (ffmpegProcess) {
+                      ffmpegProcess.kill('SIGKILL');
+                      ffmpegProcess = null;
+                      streamInfo.source = 'Tidak ada';
+                      info += 'Sinyal stream YouTube berhasil diputus secara paksa.\n';
+                  } else {
+                      info += 'Tidak ada proses siaran yang sedang berjalan saat ini.\n';
+                  }
+                  
+                  // Safe Cleanup
+                  await new Promise(resolve => setTimeout(resolve, 1500)); 
+                  const outPath = 'C:\\TelegramBot\\video_sedotan.mp4';
+                  if (fs.existsSync(outPath)) {
+                      try {
+                          fs.unlinkSync(outPath);
+                          info += '🧹 Cache file video telah dibersihkan dari penyimpanan.';
+                      } catch (e) {
+                          info += '⚠️ Pembersihan dibatalkan (File masih diproses sistem).';
+                      }
+                  }
+                  return info;
+              });
           });
           
           function startFFmpeg(ctx, videoPath, sourceName) {
@@ -327,128 +323,109 @@ jobs:
               streamInfo.source = sourceName;
               
               ffmpegProcess = spawn('ffmpeg', [
-                  '-stream_loop', '-1', '-re', '-i', videoPath,
-                  '-c:v', 'copy', '-c:a', 'aac', '-f', 'flv',
+                  '-stream_loop', '-1',
+                  '-re',
+                  '-i', videoPath,
+                  '-c:v', 'copy',
+                  '-c:a', 'aac',
+                  '-f', 'flv',
                   `rtmp://a.rtmp.youtube.com/live2/${streamKey}`
               ]);
               
               ffmpegProcess.on('spawn', () => {
-                  ctx.reply(`✅ *BERHASIL MENGUDARA KE YOUTUBE!* 🚀\nSumber: ${sourceName}`, { parse_mode: 'Markdown' });
+                  ctx.reply(`✅ *BERHASIL MENGUDARA!* 🚀\nSistem mengonfirmasi transmisi lancar.\n\n📺 *Tonton Siaran:* https://youtube.com/@${ytHandle}/live`, { parse_mode: 'Markdown' });
+              });
+              
+              let errLog = '';
+              ffmpegProcess.stderr.on('data', (data) => {
+                  errLog += data.toString();
+                  if(errLog.length > 2000) errLog = errLog.substring(errLog.length - 1000);
               });
               
               ffmpegProcess.on('close', (code) => {
                   if (ffmpegProcess) { 
                       ffmpegProcess = null;
-                      ctx.reply(`🛑 *Stream Berhenti* (Kode: ${code})`, { parse_mode: 'Markdown' });
+                      streamInfo.source = 'Tidak ada';
+                      let shortLog = errLog.substring(errLog.length - 400);
+                      ctx.reply(`🛑 *SIARAN TERPUTUS OTOMATIS* (Kode: ${code})\n\n*Log Diagnostik:*\n\`\`\`text\n${shortLog}\n\`\`\``, { parse_mode: 'Markdown' });
                   }
               });
           }
           
+          // --- TEXT COMMANDS & ARBITRARY EXECUTOR ---
           bot.on('text', async (ctx) => {
               const txt = ctx.message.text;
               if (txt.startsWith('/')) return;
               
-              if (botState === 'wait_new_key') {
-                  AI_API_KEY = txt.trim();
-                  botState = 'ai_chat';
-                  ctx.reply(`✅ *API Key Berhasil Diubah!*\nKey baru: \`${AI_API_KEY}\``, { parse_mode: 'Markdown', ...menuAi });
-                  
-              } else if (botState === 'ai_chat') {
-                  const processMsg = await ctx.reply('⏳ *AI mengetik...*', { parse_mode: 'Markdown' });
-                  try {
-                      chatHistory.push({ role: "user", content: txt });
-                      if(chatHistory.length > 10) chatHistory.shift(); 
-                      
-                      const response = await axios.post(AI_ENDPOINT, {
-                          model: "default", 
-                          messages: [
-                              { role: "system", content: "Kamu adalah asisten AI handal. Jika memberikan kode program, SELALU bungkus dengan triple backticks (markdown code block) agar mudah di-copy." },
-                              ...chatHistory
-                          ]
-                      }, {
-                          headers: { 'Authorization': `Bearer ${AI_API_KEY}`, 'Content-Type': 'application/json' },
-                          timeout: 60000
-                      });
-                      
-                      const aiReply = response.data.choices[0].message.content;
-                      chatHistory.push({ role: "assistant", content: aiReply });
-                      
-                      await ctx.telegram.editMessageText(ctx.chat.id, processMsg.message_id, null, aiReply, { parse_mode: 'Markdown' }).catch(()=>{
-                          ctx.telegram.editMessageText(ctx.chat.id, processMsg.message_id, null, aiReply).catch(()=>{});
-                      });
-                  } catch (err) {
-                      chatHistory.pop(); 
-                      let errStr = err.response ? JSON.stringify(err.response.data) : err.message;
-                      ctx.telegram.editMessageText(ctx.chat.id, processMsg.message_id, null, `❌ *AI Error:*\n\`\`\`text\n${errStr}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
-                  }
+              if (botState === 'wait_key') {
+                  streamKey = txt.trim();
+                  botState = 'idle';
+                  ctx.reply(`✅ *Berhasil!* Stream Key telah diperbarui menjadi:\n\`${streamKey}\``, { parse_mode: 'Markdown' });
                   
               } else if (botState === 'wait_local') {
                   botState = 'idle';
-                  await runTask(ctx, 'Memvalidasi video lokal', async () => {
-                      if (!fs.existsSync(txt)) throw new Error('File tidak ditemukan di VPS!');
-                      startFFmpeg(ctx, txt, 'File Lokal VPS');
-                      return 'Memulai transmisi stream...';
+                  await runTask(ctx, 'Memvalidasi direktori lokal', async () => {
+                      if (!fs.existsSync(txt)) throw new Error('Path / file tidak ditemukan di server.');
+                      startFFmpeg(ctx, txt, 'File Lokal RDP');
+                      return 'Engine disiapkan. Memulai inisiasi stream...';
                   });
                   
               } else if (botState === 'wait_link') {
                   botState = 'idle';
-                  const processMsg = await ctx.reply('⏳ *Mengunduh Video YouTube/Web...*', { parse_mode: 'Markdown' });
-                  const outPath = '/home/runner/TelegramBot/stream_vid.mp4';
+                  const processMsg = await ctx.reply('⏳ *Menganalisis Link & Mengunduh Media...*\nMohon tunggu, kecepatan bergantung pada ukuran file.', { parse_mode: 'Markdown' });
+                  
+                  const outPath = 'C:\\TelegramBot\\video_sedotan.mp4';
                   try { if(fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch(e){}
                   
                   const dlProcess = spawn('yt-dlp', ['-f', 'b[ext=mp4]/b', '-o', outPath, txt]);
+                  let dlLogs = '';
+                  
+                  dlProcess.stdout.on('data', d => dlLogs += d.toString());
+                  dlProcess.stderr.on('data', d => dlLogs += d.toString());
+                  
                   dlProcess.on('close', (code) => {
                       if (code === 0 && fs.existsSync(outPath)) {
-                          ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, '✅ *Unduhan Selesai! Mengudara...*', { parse_mode: 'Markdown' }).catch(()=>{});
+                          ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, '✅ *Unduhan Selesai!* Meneruskan media ke YouTube...', { parse_mode: 'Markdown' }).catch(()=>{});
                           startFFmpeg(ctx, outPath, 'Link Web (yt-dlp)');
                       } else {
-                          ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, '❌ *Gagal mengunduh video.*', { parse_mode: 'Markdown' }).catch(()=>{});
+                          let shortErr = dlLogs.substring(dlLogs.length - 400);
+                          ctx.telegram.editMessageText(myChatId, processMsg.message_id, null, `❌ *Gagal Mengunduh Video*\nPastikan tautan valid dan bersifat publik.\n\n*Log Error:*\n\`\`\`text\n${shortErr}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
                       }
                   });
-              } else if (botState === 'wait_dl_file') {
-                  botState = 'idle';
-                  await runTask(ctx, 'Downloading file', async () => {
-                      await execAsync(`wget -P /home/runner/TelegramBot/ "${txt}"`);
-                      return 'Download file sukses!';
-                  });
-              } else if (botState === 'wait_up_file') {
-                  botState = 'idle';
-                  const processMsg = await ctx.reply('⏳ *Mengirim file ke Telegram...*', { parse_mode: 'Markdown' });
-                  try {
-                      if(!fs.existsSync(txt)) throw new Error('File path tidak valid!');
-                      await ctx.replyWithDocument({ source: txt });
-                      ctx.telegram.editMessageText(ctx.chat.id, processMsg.message_id, null, '✅ File terkirim!').catch(()=>{});
-                  } catch(e) {
-                      ctx.telegram.editMessageText(ctx.chat.id, processMsg.message_id, null, `❌ Gagal: ${e.message}`).catch(()=>{});
-                  }
+                  
               } else {
-                  // C&C Command Prompt / Shell Mode
+                  // Arbitrary CMD Executor (Fitur Pro - Eksekusi Terminal via Chat)
                   try {
-                      const msg = await ctx.reply(`⚙️ *Exec (C&C):* \`${txt}\``, { parse_mode: 'Markdown' });
+                      const msg = await ctx.reply(`⚙️ *Menjalankan perintah:* \`${txt}\``, { parse_mode: 'Markdown' });
                       const { stdout, stderr } = await execAsync(txt, { timeout: 15000 });
-                      let out = stdout || stderr || 'Eksekusi tanpa output.';
-                      if (out.length > 3500) out = out.substring(0, 3500) + '...';
-                      await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `💻 *Console Output:*\n\`\`\`text\n${out}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
+                      let out = stdout || stderr || 'Perintah dieksekusi tanpa output.';
+                      if (out.length > 3500) out = out.substring(0, 3500) + '... (Terpotong)';
+                      await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, `💻 *Hasil Output:*\n\`\`\`text\n${out}\n\`\`\``, { parse_mode: 'Markdown' }).catch(()=>{});
                   } catch (err) {
-                      ctx.reply(`❌ *Console Error:*\n\`\`\`text\n${err.message}\n\`\`\``, { parse_mode: 'Markdown' });
+                      ctx.reply(`❌ *Sistem menolak perintah:*\n\`\`\`text\n${err.message}\n\`\`\``, { parse_mode: 'Markdown' });
                   }
               }
           });
           
-          bot.telegram.sendMessage(myChatId, "🚀 *UBUNTU GOD MODE ULTIMATE AKTIF!* 🚀\n\n🌐 *Dashboard:* http://" + tsIP + ":9000\n🔑 *Pass:* `123456`\n\n🤖 _Ketik /start untuk membuka menu utama._", { parse_mode: 'Markdown' }).catch(()=>{});
+          // Anti-Crash Handler untuk Node.js
+          process.on('uncaughtException', (err) => { console.error('Uncaught Exception:', err); });
+          process.on('unhandledRejection', (reason, promise) => { console.error('Unhandled Rejection:', reason); });
           
           bot.launch();
           process.once('SIGINT', () => bot.stop('SIGINT'));
           process.once('SIGTERM', () => bot.stop('SIGTERM'));
-          EOF
+          '@
           
-          sed -i "s/PLACEHOLDER_TOKEN/${{ secrets.TELEGRAM_TOKEN }}/g" bot.js
-          sed -i "s/PLACEHOLDER_CHATID/${{ secrets.TELEGRAM_CHAT_ID }}/g" bot.js
+          $botCode = $botCode -replace "PLACEHOLDER_TOKEN", "${{ secrets.TELEGRAM_TOKEN }}"
+          $botCode = $botCode -replace "PLACEHOLDER_CHATID", "${{ secrets.TELEGRAM_CHAT_ID }}"
           
-          pm2 start bot.js --name "TelegramRemoteVIP"
-          sleep 3
+          Set-Content -Path "C:\TelegramBot\bot.js" -Value $botCode -Encoding UTF8
+          
+          pm2 start C:\TelegramBot\bot.js --name "TelegramRemoteVIP" --cwd "C:\TelegramBot"
+          Start-Sleep -Seconds 5
+          pm2 logs TelegramRemoteVIP --lines 10 --nostream
 
       - name: Menahan Server Tetap Aktif
         run: |
-          echo "Sistem stabil."
-          tail -f /dev/null
+          Write-Host "Sistem Enterprise berhasil mengudara. Pantau melalui Telegram."
+          ping -t 127.0.0.1 > $null
