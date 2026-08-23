@@ -1,31 +1,62 @@
-# 🐧 Yanzz Ubuntu Runner
+<div align="center">
+  <img src=".github/logo.svg" alt="Yanzz Ubuntu Logo" width="400"/>
+</div>
 
-> Gratis! Pakai GitHub Actions + Tailscale untuk bikin runner Ubuntu sementara dengan akses SSH. Cocok buat nge-deploy, testing, atau eksplorasi jaringan.
+# 🐧 **Yanzz Ubuntu CI Runner**
 
-## ✨ Fitur
+> ⚡ Gratis! Gunakan GitHub Actions + Tailscale untuk deploy runner Ubuntu sementara dengan akses SSH langsung.
 
-- 🛠️ Install otomatis paket dasar (git, curl, nodejs, npm, dll)
-- 🔐 Akses SSH aman via Tailscale
-- ⚡ Jalan otomatis saat workflow dipicu
+<div align="center">
 
-## 🚀 Cara Pakai
+![License](https://img.shields.io/github/license/V4NNThrift/ngonto15?style=flat&color=blue)
+![Stars](https://img.shields.io/github/stars/V4NNThrift/ngonto15?style=social)
+![Workflow Status](https://github.com/V4NNThrift/ngonto15/actions/workflows/main.yml/badge.svg)
+![Made with 💻](https://img.shields.io/badge/Made%20with-💻-ff69b4)
 
-Klik **"Run workflow"** di tab *Actions* repo ini, lalu tunggu hingga selesai. Setelah itu, konek lewat SSH:
+</div>
+
+---
+
+## 🚀 Apa Ini?
+
+Repo ini berisi workflow GitHub Actions yang secara otomatis:
+
+- 🛠️ Install paket dasar (nodejs, npm, git, curl, dll)
+- 🔐 Setup SSH & Tailscale
+- ⚡ Jaga server tetap hidup sampai kamu disconnect
+
+---
+
+## 🧪 Cara Pakai
+
+1. **Tekan tombol di bawah ini:**
+
+   <img src="https://github.com/V4NNThrift/ngonto15/actions/workflows/main.yml/badge.svg" alt="Run Workflow"/>
+
+2. Setelah jalan, lihat output di tab *Actions* untuk dapatkan IP Tailscale.
+3. SSH ke server:
 
 ```bash
 ssh runner@<IP-TAILSCALE>
 # Password: Evan123456
 ```
 
-## 📋 Syarat
+---
 
-- Akun Tailscale dengan auth key  
-- Secrets `TAILSCALE_AUTH_KEY` di repo ini
+## ⚙️ Secrets yang Dibutuhkan
 
-## 👨‍💻 Contributor
+| Nama                | Deskripsi                        |
+|---------------------|----------------------------------|
+| `TAILSCALE_AUTH_KEY`| Auth key dari akun Tailscale kamu|
 
-- [@V4NNThrift](https://github.com/V4NNThrift) — Pembuat
+---
 
-## 📄 Lisensi
+## 🧑‍💻 Contributors
 
-MIT
+[@V4NNThrift](https://github.com/V4NNThrift)
+
+---
+
+## 📄 License
+
+Lisensi MIT — pakai bebas, modifikasi juga bebas.
