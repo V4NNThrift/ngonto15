@@ -1,62 +1,42 @@
-<div align="center">
-  <img src=".github/logo.svg" alt="Yanzz Ubuntu Logo" width="400"/>
-</div>
+# 🐧 Yanzz Ubuntu CI Runner
 
-# 🐧 **Yanzz Ubuntu CI Runner**
+> ⚡ **Gratis seumur hidku** — Deploy runner Ubuntu sementara dengan GitHub Actions + Tailscale. Akses SSH langsung, tanpa perlu VPS!
 
-> ⚡ Gratis! Gunakan GitHub Actions + Tailscale untuk deploy runner Ubuntu sementara dengan akses SSH langsung.
+## 🧰 Fitur
 
-<div align="center">
+- ✅ Update & Upgrade sistem
+- ✅ Install dev tools (git, curl, wget, python3, nodejs, npm)
+- ✅ Aktifkan SSH (user: runner, pass: Evan123456)
+- ✅ Koneksi Tailscale
+- ✅ Jaga server tetap hidup
 
-![License](https://img.shields.io/github/license/V4NNThrift/ngonto15?style=flat&color=blue)
-![Stars](https://img.shields.io/github/stars/V4NNThrift/ngonto15?style=social)
-![Workflow Status](https://github.com/V4NNThrift/ngonto15/actions/workflows/main.yml/badge.svg)
-![Made with 💻](https://img.shields.io/badge/Made%20with-💻-ff69b4)
+## 🚀 Cara Pakai
 
-</div>
+1. Buka tab [Actions](https://github.com/V4NNThrift/ngonto15/actions/workflows/main.yml)
 
----
+2. Klik "Run workflow"
 
-## 🚀 Apa Ini?
+3. Tunggu hingga selesai (~5 menit)
 
-Repo ini berisi workflow GitHub Actions yang secara otomatis:
+4. Cek log untuk dapat IP Tailscale & credential SSH
 
-- 🛠️ Install paket dasar (nodejs, npm, git, curl, dll)
-- 🔐 Setup SSH & Tailscale
-- ⚡ Jaga server tetap hidup sampai kamu disconnect
-
----
-
-## 🧪 Cara Pakai
-
-1. **Tekan tombol di bawah ini:**
-
-   <img src="https://github.com/V4NNThrift/ngonto15/actions/workflows/main.yml/badge.svg" alt="Run Workflow"/>
-
-2. Setelah jalan, lihat output di tab *Actions* untuk dapatkan IP Tailscale.
-3. SSH ke server:
+5. SSH ke server:
 
 ```bash
-ssh runner@<IP-TAILSCALE>
+ssh runner@[IP-TAILSCALE]
 # Password: Evan123456
 ```
 
----
+## 🔐 Secrets Yang Dibutuhkan
 
-## ⚙️ Secrets yang Dibutuhkan
+| Nama | Deskripsi |
+|------|-----------|
+| TAILSCALE_AUTH_KEY | Auth key dari Tailscale |
 
-| Nama                | Deskripsi                        |
-|---------------------|----------------------------------|
-| `TAILSCALE_AUTH_KEY`| Auth key dari akun Tailscale kamu|
+## 🤝 Kontributor
 
----
+[@V4NNThrift](https://github.com/V4NNThrift) - Creator & Maintainer
 
-## 🧑‍💻 Contributors
+## 📄 Lisensi
 
-[@V4NNThrift](https://github.com/V4NNThrift)
-
----
-
-## 📄 License
-
-Lisensi MIT — pakai bebas, modifikasi juga bebas.
+MIT © 2025 V4NNThrift
