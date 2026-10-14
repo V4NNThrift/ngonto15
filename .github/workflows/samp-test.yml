@@ -1,0 +1,118 @@
+name: Croire SA-MP Test Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  samp-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Install 32-bit libs + MySQL + deps
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt update
+          sudo apt install -y libc6:i386 libstdc++6:i386 zlib1g:i386 \
+            mysql-server unzip curl wget tailscale 2>/dev/null || \
+          sudo apt install -y libc6:i386 libstdc++6:i386 mysql-server unzip curl wget
+          curl -fsSL https://tailscale.com/install.sh | sudo sh
+
+      - name: Start MySQL + create DB
+        run: |
+          sudo systemctl start mysql
+          sudo mysql -e "CREATE DATABASE IF NOT EXISTS croire;"
+          sudo mysql -e "CREATE USER IF NOT EXISTS 'croire'@'localhost' IDENTIFIED BY 'croirepass';"
+          sudo mysql -e "GRANT ALL PRIVILEGES ON croire.* TO 'croire'@'localhost'; FLUSH PRIVILEGES;"
+
+      - name: Download gamemode package + SQL
+        run: |
+          mkdir -p ~/samp/gamemodes ~/samp/scriptfiles ~/samp/plugins
+          cd ~/samp
+          curl -sL "https://muse.ai/files/1327324540468705/1670152228066431/g95t4x6gnyr74u1a6ota6phg/croire-ultra-deploy.zip" -o deploy.zip
+          unzip -o -q deploy.zip
+          curl -sL "https://muse.ai/files/1327324540468705/2358151895025104/ptfhq01mx40khvyqltzhg3j6/croire_db_full.sql" -o croire.sql
+
+      - name: Import database
+        run: |
+          sudo mysql croire < ~/samp/croire.sql
+          echo "DB imported: $(sudo mysql croire -e 'SHOW TABLES;' | wc -l) tables"
+
+      - name: Download samp03svr + Linux plugins
+        run: |
+          cd ~/samp
+          # SA-MP 0.3.7-R2 Linux server
+          curl -sL "https://dracoblue.net/download/samp-037r2-server.tar.gz" -o samp.tar.gz || \
+          curl -sL "http://files.sa-mp.com/samp037svr_R2-1.tar.gz" -o samp.tar.gz
+          tar -xzf samp.tar.gz --strip-components=1
+          # Plugins (match gamemode versions: sscanf 2.8.3, streamer 2.9.5)
+          cd plugins
+          curl -sL "https://github.com/maddinat0r/sscanf/releases/download/v2.8.3/sscanf-2.8.3-samp-linux.tar.gz" -o sscanf.tgz && tar -xzf sscanf.tgz || echo "sscanf manual"
+          curl -sL "https://github.com/samp-incognito/samp-streamer-plugin/releases/download/v2.9.5/streamer-2.9.5-samp-linux.tar.gz" -o streamer.tgz && tar -xzf streamer.tgz || echo "streamer manual"
+          curl -sL "https://github.com/pBlueG/SA-MP-MySQL/releases/download/R41-4/mysql-R41-4-samp-linux.tar.gz" -o mysql.tgz && tar -xzf mysql.tgz || echo "mysql manual"
+          ls -lh ~/samp/plugins/
+
+      - name: Configure mysql_settings.ini
+        run: |
+          cat > ~/samp/scriptfiles/mysql_settings.ini <<'EOF'
+          [mysql]
+          host = localhost
+          user = croire
+          password = croirepass
+          database = croire
+          EOF
+          cat ~/samp/scriptfiles/mysql_settings.ini
+
+      - name: Write server.cfg
+        run: |
+          cat > ~/samp/server.cfg <<'EOF'
+          echo Executing Server Config...
+          lanmode 0
+          hostname Croire Test (GitHub Actions)
+          mapname San Andreas
+          language Indonesia
+          rcon 0
+          announce 1
+          query 1
+          maxplayers 30
+          maxnpc 0
+          gamemode0 Main
+          filterscripts
+          plugins sscanf.so streamer.so mysql.so
+          onfoot_rate 40
+          incar_rate 40
+          weapon_rate 40
+          stream_distance 300.0
+          stream_rate 1000
+          port 7777
+          EOF
+
+      - name: Connect Tailscale
+        run: |
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=gh-samp-${{ github.run_id }}
+          echo "TAILSCALE_IP=$(tailscale ip -4)" >> $GITHUB_ENV
+
+      - name: Start SA-MP server
+        run: |
+          cd ~/samp
+          chmod +x samp03svr announce
+          nohup ./samp03svr > server.log 2>&1 &
+          sleep 10
+          echo "===== SERVER LOG ====="
+          cat server.log | head -50
+
+      - name: Show connection info
+        run: |
+          echo "======================"
+          echo "SA-MP Server : $TAILSCALE_IP:7777"
+          echo "Tailscale IP : $TAILSCALE_IP"
+          echo "Add to SA-MP client via Tailscale network"
+          echo "======================"
+
+      - name: Keep alive 6h
+        run: |
+          while true; do
+            echo "[$(date)] Server running..."
+            tail -5 ~/samp/server.log
+            sleep 300
+          done
